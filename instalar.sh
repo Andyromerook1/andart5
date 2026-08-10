@@ -14,8 +14,9 @@ fi
 cd llama.cpp
 git pull
 rm -rf build
-cmake -B build -DLLAMA_BUILD_SERVER=OFF -DGGML_NATIVE=OFF
+cmake -B build -DLLAMA_BUILD_SERVER=OFF -DGGML_NATIVE=ON
 cmake --build build --config Release -j4
+
 mkdir -p ~/bin
 cp build/bin/llama-cli ~/bin/
 chmod +x ~/bin/llama-cli
@@ -30,5 +31,4 @@ if [ ! -f "tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf" ]; then
 else
     echo "Modelo ya descargado."
 fi
-
 echo "✅ Instalación completa. Vuelve a la carpeta del proyecto (cd ~/andart5) y ejecuta python main.py"
