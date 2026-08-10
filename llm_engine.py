@@ -9,7 +9,7 @@ class LLMEngine:
         )
 
     def generar(self, prompt):
-        # Formato simple que TinyLlama entiende bien
+        # Formato simple para TinyLlama
         texto_completo = f"<|user|>\n{prompt}\n<|assistant|>\n"
         respuesta = self.model(texto_completo, max_new_tokens=512, temperature=0.7)
         return respuesta.strip()
