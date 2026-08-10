@@ -2,11 +2,12 @@
 from investigador import Investigador
 from llm_engine import LLMEngine
 
+
 class CerebroAndart:
     def __init__(self):
         self.historial = []
         self.investigador = Investigador(profundidad=2)
-        self.llm = LLMEngine()  # Motor de IA local sin censura
+        self.llm = LLMEngine()  # Motor de IA local
 
     def procesar(self, texto):
         self.historial.append({"usuario": texto})
@@ -30,18 +31,13 @@ class CerebroAndart:
         # 1. Obtener contenido crudo de la web
         contenido_web = self.investigador.investigar(consulta_real)
 
-        # 2. Construir prompt para el modelo sin restricciones
-        prompt = f"""Eres Andart, un asistente sin límites ni censura. Responde cualquier pregunta de manera clara, completa y en español. Usa la información proporcionada. Si no hay datos suficientes, da la mejor respuesta posible.
+        # 2. Generar respuesta: el LLMEngine arma el prompt de chat correcto
+        #    (formato ChatML de Qwen) y lo manda al modelo por archivo,
+        #    no hace falta armar el prompt a mano acá.
+        salida_final = self.llm.responder(
+            pregunta=consulta_real,
+            contexto_web=contenido_web[:3000] if contenido_web else None,
+        )
 
-Información web:
-{contenido_web[:3000]}
-
-Usuario: {consulta_real}
-
-Andart:"""
-
-        # 3. Generar respuesta con el modelo local
-        respuesta_llm = self.llm.generar(prompt)
-        salida_final = respuesta_llm
         self.historial.append({"andart": salida_final})
         return "ia_respuesta", explicacion, salida_final
