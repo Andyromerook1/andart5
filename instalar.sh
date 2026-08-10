@@ -1,26 +1,30 @@
 #!/bin/bash
 echo "🔧 Actualizando paquetes..."
 pkg update && pkg upgrade -y
-
-echo "📦 Instalando dependencias del sistema..."
-pkg install python git curl libxml2 libxslt pkg-config clang -y
+pkg install python git cmake build-essential curl libxml2 libxslt pkg-config clang -y
 
 echo "📦 Instalando dependencias Python..."
-# No actualizar pip (prohibido en Termux)
-pip install requests beautifulsoup4
+pip install requests beautifulsoup4 lxml
 
-echo "📦 Instalando lxml (con ruta de cabeceras)..."
-export C_INCLUDE_PATH=$PREFIX/include/libxml2
-pip install lxml
-
-echo "📦 Instalando ctransformers..."
-pip install ctransformers
+echo "🔨 Compilando llama.cpp..."
+cd ~
+if [ ! -d "llama.cpp" ]; then
+    git clone https://github.com/ggml-org/llama.cpp.git
+fi
+cd llama.cpp
+git pull
+cmake -B build
+cmake --build build --config Release -j4
+mkdir -p ~/bin
+cp build/bin/llama-cli ~/bin/
+chmod +x ~/bin/llama-cli
+export PATH=$PATH:~/bin
+echo "export PATH=\$PATH:~/bin" >> ~/.bashrc
 
 echo "📥 Descargando modelo sin censura (~700MB)..."
 mkdir -p ~/modelos
 cd ~/modelos
 if [ ! -f "tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf" ]; then
-    echo "Descargando con curl (reanudable)..."
     curl -L -O -C - https://huggingface.co/TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF/resolve/main/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf
 else
     echo "Modelo ya descargado."
