@@ -14,7 +14,7 @@ fi
 cd llama.cpp
 git pull
 rm -rf build
-cmake -B build -DLLAMA_BUILD_SERVER=OFF
+cmake -B build -DLLAMA_BUILD_SERVER=OFF -DGGML_NATIVE=OFF
 cmake --build build --config Release -j4
 mkdir -p ~/bin
 cp build/bin/llama-cli ~/bin/
