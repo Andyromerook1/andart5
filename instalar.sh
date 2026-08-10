@@ -1,4 +1,12 @@
 #!/bin/bash
+set -e  # Si algo falla de verdad, cortar en vez de seguir como si nada
+
+# Versión de llama.cpp a la que fijamos el build. No usamos "master" porque
+# el proyecto cambia constantemente y a veces introduce cosas que rompen en
+# Termux (ej: el binario unificado "llama-app" agregado en mayo 2026).
+# Esta versión es anterior a ese cambio y compila bien en Android/Termux.
+LLAMA_CPP_TAG="b8163"
+
 echo "🔧 Actualizando paquetes..."
 pkg update && pkg upgrade -y
 pkg install python git cmake build-essential curl libxml2 libxslt pkg-config clang -y
@@ -6,18 +14,23 @@ pkg install python git cmake build-essential curl libxml2 libxslt pkg-config cla
 echo "📦 Instalando dependencias Python..."
 pip install requests beautifulsoup4 lxml
 
-echo "🔨 Compilando llama.cpp..."
+echo "🔨 Preparando llama.cpp (versión fijada: $LLAMA_CPP_TAG)..."
 cd ~
 if [ ! -d "llama.cpp" ]; then
     git clone https://github.com/ggml-org/llama.cpp.git
 fi
 cd llama.cpp
-git pull
+
+echo "🔖 Descartando cambios locales y trayendo etiquetas..."
+git fetch --tags
+git reset --hard
+git checkout "$LLAMA_CPP_TAG"
+
 rm -rf build
 
 echo "🩹 Aplicando parche de compatibilidad ARM/clang (vcvtnq_s32_f32)..."
 PATCH_FILE="ggml/src/ggml-cpu/ggml-cpu-impl.h"
-if grep -q "^inline static int32x4_t vcvtnq_s32_f32" "$PATCH_FILE"; then
+if [ -f "$PATCH_FILE" ] && grep -q "^inline static int32x4_t vcvtnq_s32_f32" "$PATCH_FILE"; then
     python3 - <<'EOF'
 path = "ggml/src/ggml-cpu/ggml-cpu-impl.h"
 with open(path) as f:
@@ -53,17 +66,26 @@ else:
             print(f"✅ Parche aplicado (líneas {start+1} a {end+1}).")
 EOF
 else
-    echo "✅ El archivo ya está parcheado o no contiene el bloque conflictivo. Continuando..."
+    echo "✅ El archivo no contiene el bloque conflictivo en esta versión. Continuando..."
 fi
 
+echo "🔨 Compilando llama.cpp..."
 cmake -B build -DLLAMA_BUILD_SERVER=OFF -DGGML_NATIVE=ON -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF
 cmake --build build --config Release -j4
+
+if [ ! -f "build/bin/llama-cli" ]; then
+    echo "❌ La compilación terminó pero no se generó build/bin/llama-cli."
+    echo "   Revisa el log de arriba en busca de la primera línea que diga 'error:' (no 'warning:')."
+    exit 1
+fi
 
 mkdir -p ~/bin
 cp build/bin/llama-cli ~/bin/
 chmod +x ~/bin/llama-cli
 export PATH=$PATH:~/bin
-echo "export PATH=\$PATH:~/bin" >> ~/.bashrc
+if ! grep -q '~/bin' ~/.bashrc 2>/dev/null; then
+    echo "export PATH=\$PATH:~/bin" >> ~/.bashrc
+fi
 
 echo "📥 Descargando modelo Qwen2.5-0.5B-Instruct (~500MB)..."
 mkdir -p ~/modelos
@@ -74,4 +96,7 @@ else
     echo "Modelo ya descargado."
 fi
 
-echo "✅ Instalación completa. Vuelve a la carpeta del proyecto (cd ~/andart5) y ejecuta python main.py"
+echo ""
+echo "✅ Instalación completa."
+~/bin/llama-cli --version
+echo "Vuelve a la carpeta del proyecto (cd ~/andart5) y ejecuta python main.py"
