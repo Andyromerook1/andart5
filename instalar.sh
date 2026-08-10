@@ -13,7 +13,8 @@ if [ ! -d "llama.cpp" ]; then
 fi
 cd llama.cpp
 git pull
-cmake -B build
+rm -rf build
+cmake -B build -DLLAMA_BUILD_SERVER=OFF
 cmake --build build --config Release -j4
 mkdir -p ~/bin
 cp build/bin/llama-cli ~/bin/
