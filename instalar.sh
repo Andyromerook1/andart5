@@ -56,7 +56,7 @@ else
     echo "✅ El archivo ya está parcheado o no contiene el bloque conflictivo. Continuando..."
 fi
 
-cmake -B build -DLLAMA_BUILD_SERVER=OFF -DGGML_NATIVE=ON
+cmake -B build -DLLAMA_BUILD_SERVER=OFF -DGGML_NATIVE=ON -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF
 cmake --build build --config Release -j4
 
 mkdir -p ~/bin
