@@ -1,10 +1,10 @@
 #!/bin/bash
 echo "🔧 Actualizando paquetes..."
 pkg update && pkg upgrade -y
-pkg install python git cmake make clang libxml2 libxslt -y
+pkg install python git wget -y
 
 echo "📦 Instalando dependencias Python..."
-pip install requests beautifulsoup4 lxml llama-cpp-python
+pip install requests beautifulsoup4 lxml ctransformers
 
 echo "📥 Descargando modelo sin censura (~700MB)..."
 mkdir -p ~/modelos
