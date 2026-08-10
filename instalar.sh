@@ -5,11 +5,16 @@ pkg update && pkg upgrade -y
 echo "📦 Instalando dependencias del sistema..."
 pkg install python git curl libxml2 libxslt pkg-config clang -y
 
-echo "🐍 Actualizando pip..."
-pip install --upgrade pip
-
 echo "📦 Instalando dependencias Python..."
-pip install requests beautifulsoup4 lxml ctransformers
+# No actualizar pip (prohibido en Termux)
+pip install requests beautifulsoup4
+
+echo "📦 Instalando lxml (con ruta de cabeceras)..."
+export C_INCLUDE_PATH=$PREFIX/include/libxml2
+pip install lxml
+
+echo "📦 Instalando ctransformers..."
+pip install ctransformers
 
 echo "📥 Descargando modelo sin censura (~700MB)..."
 mkdir -p ~/modelos
