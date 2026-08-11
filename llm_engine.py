@@ -4,7 +4,7 @@ import tempfile
 
 
 class LLMEngine:
-    def __init__(self, model_path="~/modelos/qwen2.5-0.5b-instruct-q4_k_m.gguf"):
+    def __init__(self, model_path="~/modelos/TinyLlama-1.1B-Chat-v1.0-Heretic.Q4_K_M.gguf"):
         self.model_path = os.path.expanduser(model_path)
         self.binario = os.path.expanduser("~/bin/llama-cli")
 
@@ -24,10 +24,10 @@ class LLMEngine:
 
     def armar_prompt_chat(self, pregunta, contexto_web=None, system_prompt=None):
         """
-        Arma el prompt en el formato de chat que espera Qwen2.5-Instruct
-        (ChatML: <|im_start|>...<|im_end|>). Si hay contexto_web (texto
-        sacado de internet por tu investigador.py), lo mete en el mensaje
-        de usuario junto con la pregunta.
+        Arma el prompt en el formato de chat Zephyr que espera TinyLlama-Chat
+        (<|system|>, <|user|>, <|assistant|>, separados por </s>). Si hay
+        contexto_web (texto sacado de internet por tu investigador.py), lo
+        mete en el mensaje de usuario junto con la pregunta.
         """
         if system_prompt is None:
             system_prompt = (
@@ -46,9 +46,9 @@ class LLMEngine:
             mensaje_usuario = pregunta
 
         return (
-            f"<|im_start|>system\n{system_prompt}<|im_end|>\n"
-            f"<|im_start|>user\n{mensaje_usuario}<|im_end|>\n"
-            f"<|im_start|>assistant\n"
+            f"<|system|>\n{system_prompt}</s>\n"
+            f"<|user|>\n{mensaje_usuario}</s>\n"
+            f"<|assistant|>\n"
         )
 
     def generar(self, prompt, timeout=180, ctx_size=4096, n_predict=512):
