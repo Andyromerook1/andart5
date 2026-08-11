@@ -1,11 +1,54 @@
 import subprocess
 import os
+import json
 import tempfile
+
+CONFIG_PATH = os.path.expanduser("~/.andart/config.json")
+
+
+def _cargar_config():
+    """Lee la config generada por el instalador (modelo elegido según RAM
+    del dispositivo). Si no existe, devolvemos un dict vacío y usamos
+    valores por defecto más abajo."""
+    try:
+        with open(CONFIG_PATH) as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+
+def _ram_disponible_mb():
+    """RAM libre en este momento (no la total), leyendo /proc/meminfo.
+    Funciona igual en dispositivos de 32 o 64 bits. Devuelve None si no
+    se puede leer (por ejemplo, en un sistema que no sea Linux/Android)."""
+    try:
+        with open("/proc/meminfo") as f:
+            for line in f:
+                if line.startswith("MemAvailable:"):
+                    return int(line.split()[1]) // 1024
+    except (FileNotFoundError, ValueError, IndexError):
+        pass
+    return None
 
 
 class LLMEngine:
-    def __init__(self, model_path="~/modelos/TinyLlama-1.1B-Chat-v1.0-Heretic.Q4_K_M.gguf"):
+    def __init__(self, model_path=None, formato_chat=None):
+        config = _cargar_config()
+
+        # Si no se pasa nada explícito, usamos lo que el instalador detectó
+        # automáticamente según la RAM del dispositivo. Si tampoco hay
+        # config (por ejemplo, instalación manual vieja), caemos a un
+        # default razonable.
+        if model_path is None:
+            model_path = config.get(
+                "model_path",
+                "~/modelos/TinyLlama-1.1B-Chat-v1.0-Heretic.Q4_K_M.gguf",
+            )
+        if formato_chat is None:
+            formato_chat = config.get("formato_chat", "zephyr")
+
         self.model_path = os.path.expanduser(model_path)
+        self.formato_chat = formato_chat
         self.binario = os.path.expanduser("~/bin/llama-cli")
 
         # Verificar que el binario exista
@@ -19,15 +62,15 @@ class LLMEngine:
         if not os.path.isfile(self.model_path):
             raise FileNotFoundError(
                 f"No se encuentra el modelo en {self.model_path}. "
-                "Verifica la ruta o descárgalo primero."
+                "Verifica la ruta o corré el instalador de nuevo."
             )
 
     def armar_prompt_chat(self, pregunta, contexto_web=None, system_prompt=None):
         """
-        Arma el prompt en el formato de chat Zephyr que espera TinyLlama-Chat
-        (<|system|>, <|user|>, <|assistant|>, separados por </s>). Si hay
-        contexto_web (texto sacado de internet por tu investigador.py), lo
-        mete en el mensaje de usuario junto con la pregunta.
+        Arma el prompt en el formato de chat correcto según el modelo
+        instalado: Zephyr (<|system|>/<|user|>/<|assistant|>) para
+        TinyLlama, o ChatML (<|im_start|>/<|im_end|>) para Qwen. El
+        formato se elige solo, según lo que haya detectado el instalador.
         """
         if system_prompt is None:
             system_prompt = (
@@ -54,13 +97,38 @@ class LLMEngine:
         else:
             mensaje_usuario = pregunta
 
+        if self.formato_chat == "chatml":
+            return (
+                f"<|im_start|>system\n{system_prompt}<|im_end|>\n"
+                f"<|im_start|>user\n{mensaje_usuario}<|im_end|>\n"
+                f"<|im_start|>assistant\n"
+            )
+
+        # default: zephyr (TinyLlama)
         return (
             f"<|system|>\n{system_prompt}</s>\n"
             f"<|user|>\n{mensaje_usuario}</s>\n"
             f"<|assistant|>\n"
         )
 
+    def _reverse_prompts(self):
+        """Tokens de corte para que el modelo no siga alucinando turnos
+        nuevos de conversación, según el formato de chat en uso."""
+        if self.formato_chat == "chatml":
+            return ["<|im_start|>"]
+        return ["<|user|>", "<|system|>"]
+
     def generar(self, prompt, timeout=300, ctx_size=2048, n_predict=200):
+        # Chequeo de RAM libre ANTES de arrancar: si está muy baja, Android
+        # puede matar el proceso a mitad de la generación, lo que da un
+        # error confuso. Mejor avisar claro de entrada.
+        ram_libre = _ram_disponible_mb()
+        if ram_libre is not None and ram_libre < 250:
+            return (
+                f"⚠️ Muy poca RAM libre en este momento ({ram_libre}MB). "
+                "Cerrá otras apps en segundo plano y probá de nuevo."
+            )
+
         # Para prompts largos (texto de internet incluido) es más robusto
         # escribirlo a un archivo temporal y usar -f, en vez de pasarlo
         # como argumento de línea de comandos con -p.
@@ -80,9 +148,9 @@ class LLMEngine:
                 "--temp", "0.7",
                 "--no-display-prompt",
                 "-no-cnv",
-                "-r", "<|user|>",
-                "-r", "<|system|>",
             ]
+            for rp in self._reverse_prompts():
+                comando += ["-r", rp]
 
             try:
                 proceso = subprocess.run(
