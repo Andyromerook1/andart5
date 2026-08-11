@@ -5,6 +5,23 @@ from api_connector import APIConnector
 from collections import Counter
 import re
 
+# Frases/patrones típicos de ruido publicitario, legal o de redes sociales
+# que no aportan nada a una respuesta técnica y suelen colarse en el scraping.
+PATRONES_RUIDO = [
+    "suscrib", "suscript", "síguenos", "sigueme", "sígueme",
+    "newsletter", "boletín", "boletin",
+    "política de privacidad", "politica de privacidad",
+    "aviso legal", "términos y condiciones", "terminos y condiciones",
+    "copyright", "derechos reservados", "todos los derechos",
+    "cookie", "publicidad", "anuncio patrocinado",
+    "oferta especial", "descuento", "compra ahora",
+    "haz clic aquí", "haz click aqui", "click aquí",
+    "twitch.tv", "instagram.com", "facebook.com", "tiktok.com",
+    "síguenos en", "únete a nuestro", "unete a nuestro",
+    "descarga la app", "descarga nuestra app",
+]
+
+
 class Investigador:
     def __init__(self, profundidad=2):
         self.profundidad = profundidad
@@ -72,6 +89,14 @@ class Investigador:
             variantes.append(f"{consulta} {sufijo}")
         return variantes[:5]
 
+    def _es_ruido(self, texto):
+        """Detecta si un fragmento es contenido promocional, legal o de
+        redes sociales que no aporta valor técnico/educativo."""
+        low = texto.lower()
+        if "http://" in low or "https://" in low:
+            return True
+        return any(patron in low for patron in PATRONES_RUIDO)
+
     def _ensamblar_codigo(self, bloques, consulta_original):
         """Toma bloques de código/texto y devuelve un script cohesionado con explicación."""
         # Separar código y texto
@@ -102,18 +127,33 @@ class Investigador:
                 ordenados = self._ordenar_fragmentos(fragmentos, lang)
                 # Eliminar duplicados simples (contenido casi idéntico)
                 unicos = self._eliminar_duplicados(ordenados)
-                codigo_completo = "\n\n".join(unicos)
-                resultado += f"\n\n[💻 CÓDIGO {lang.upper()} COMPLETO]\n{codigo_completo}\n"
+                # Limpiar líneas de ruido promocional dentro de cada fragmento
+                unicos_limpios = [self._limpiar_lineas_ruido(f) for f in unicos]
+                unicos_limpios = [f for f in unicos_limpios if f.strip()]
+                if unicos_limpios:
+                    codigo_completo = "\n\n".join(unicos_limpios)
+                    resultado += f"\n\n[💻 CÓDIGO {lang.upper()} COMPLETO]\n{codigo_completo}\n"
 
         # Procesar textos para la explicación
         if fragmentos_texto:
             texto_completo = "\n".join(fragmentos_texto)
             explicacion = self._sintetizar_texto(texto_completo, consulta_original)
-            resultado += f"\n\n[📖 EXPLICACIÓN]\n{explicacion}"
+            if explicacion:
+                resultado += f"\n\n[📖 EXPLICACIÓN]\n{explicacion}"
         elif not fragmentos_codigo:
             resultado = "[-] No se encontró información suficiente."
 
+        if not resultado.strip():
+            resultado = "[-] No se encontró información suficiente."
+
         return resultado
+
+    def _limpiar_lineas_ruido(self, fragmento):
+        """Saca del fragmento de código las líneas que en realidad son
+        texto promocional/publicitario colado por el scraping."""
+        lineas = fragmento.split("\n")
+        lineas_limpias = [l for l in lineas if not self._es_ruido(l)]
+        return "\n".join(lineas_limpias)
 
     def _adivinar_lenguaje(self, codigo):
         """Intenta adivinar el lenguaje basándose en palabras clave."""
@@ -171,24 +211,43 @@ class Investigador:
         return len(comunes) / max(len(palabras_a), len(palabras_b))
 
     def _sintetizar_texto(self, texto, consulta):
-        """Extrae las oraciones más relevantes del texto según la consulta."""
+        """Extrae las oraciones más relevantes del texto según la consulta,
+        descartando ruido promocional/legal y exigiendo que la oración
+        realmente tenga que ver con lo que se preguntó."""
         if not texto:
-            return "No se encontró explicación."
+            return ""
         oraciones = re.split(r'[.\n]+', texto)
         oraciones = [o.strip() for o in oraciones if len(o.strip()) > 30]
         if not oraciones:
-            return texto[:1000]
+            return ""
 
         palabras_consulta = set(consulta.lower().split())
         puntuadas = []
         for oracion in oraciones:
-            score = sum(1 for word in oracion.lower().split() if word in palabras_consulta)
-            if any(kw in oracion.lower() for kw in ["código", "script", "paso", "ingrediente", "herramienta", "tutorial", "ejemplo"]):
+            if self._es_ruido(oracion):
+                continue
+
+            low = oracion.lower()
+            coincidencias_reales = sum(1 for word in low.split() if word in palabras_consulta)
+
+            # Exigimos al menos una coincidencia real con palabras de la
+            # consulta; el bonus por palabras "tutorial/paso/ejemplo" ya no
+            # alcanza por sí solo para calificar, evita que cuele texto
+            # genérico sin relación con lo que se preguntó.
+            if coincidencias_reales == 0:
+                continue
+
+            score = coincidencias_reales
+            if any(kw in low for kw in ["código", "script", "paso", "ingrediente", "herramienta", "tutorial", "ejemplo"]):
                 score += 1
             puntuadas.append((score, oracion))
 
         puntuadas.sort(reverse=True, key=lambda x: x[0])
-        mejores = [orac for score, orac in puntuadas[:15] if score > 0]
+        mejores = [orac for score, orac in puntuadas[:15]]
+
         if not mejores:
-            return texto[:1500] + "..."
+            # Si el filtro estricto no dejó nada, mejor no mandar ruido:
+            # que el LLM use su propio conocimiento en vez de basura del scraping.
+            return ""
+
         return "\n".join(mejores)
