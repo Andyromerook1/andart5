@@ -32,11 +32,11 @@ class CerebroAndart:
         contenido_web = self.investigador.investigar(consulta_real)
 
         # 2. Generar respuesta: el LLMEngine arma el prompt de chat correcto
-        #    (formato ChatML de Qwen) y lo manda al modelo por archivo,
+        #    (formato Zephyr de TinyLlama) y lo manda al modelo por archivo,
         #    no hace falta armar el prompt a mano acá.
         salida_final = self.llm.responder(
             pregunta=consulta_real,
-            contexto_web=contenido_web[:3000] if contenido_web else None,
+            contexto_web=contenido_web[:1500] if contenido_web else None,
         )
 
         self.historial.append({"andart": salida_final})
