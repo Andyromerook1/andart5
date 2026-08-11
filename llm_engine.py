@@ -51,7 +51,7 @@ class LLMEngine:
             f"<|assistant|>\n"
         )
 
-    def generar(self, prompt, timeout=180, ctx_size=4096, n_predict=512):
+    def generar(self, prompt, timeout=300, ctx_size=2048, n_predict=200):
         # Para prompts largos (texto de internet incluido) es más robusto
         # escribirlo a un archivo temporal y usar -f, en vez de pasarlo
         # como argumento de línea de comandos con -p.
@@ -71,6 +71,8 @@ class LLMEngine:
                 "--temp", "0.7",
                 "--no-display-prompt",
                 "-no-cnv",
+                "-r", "<|user|>",
+                "-r", "<|system|>",
             ]
 
             try:
