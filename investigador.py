@@ -84,7 +84,7 @@ class Investigador:
 
     def _generar_subconsultas(self, consulta):
         variantes = [consulta]
-        sufijos = ["tutorial", "guía completa", "ejemplos prácticos", "código fuente", "paso a paso", "explicación"]
+        sufijos = ["tutorial", "guía completa", "para principiantes", "paso a paso", "ejemplos prácticos", "explicación básica"]
         for sufijo in sufijos:
             variantes.append(f"{consulta} {sufijo}")
         return variantes[:5]
