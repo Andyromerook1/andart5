@@ -70,6 +70,7 @@ class LLMEngine:
                 "-n", str(n_predict),
                 "--temp", "0.7",
                 "--no-display-prompt",
+                "-no-cnv",
             ]
 
             try:
