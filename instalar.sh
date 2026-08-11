@@ -70,7 +70,7 @@ else
 fi
 
 echo "🔨 Compilando llama.cpp..."
-cmake -B build -DLLAMA_BUILD_SERVER=OFF -DGGML_NATIVE=ON -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF
+cmake -B build -DGGML_NATIVE=ON -DLLAMA_BUILD_TESTS=OFF
 cmake --build build --config Release -j4
 
 if [ ! -f "build/bin/llama-cli" ]; then
@@ -87,11 +87,11 @@ if ! grep -q '~/bin' ~/.bashrc 2>/dev/null; then
     echo "export PATH=\$PATH:~/bin" >> ~/.bashrc
 fi
 
-echo "📥 Descargando modelo Qwen2.5-0.5B-Instruct (~500MB)..."
+echo "📥 Descargando modelo TinyLlama-1.1B-Chat Heretic (uncensored, ~670MB)..."
 mkdir -p ~/modelos
 cd ~/modelos
-if [ ! -f "qwen2.5-0.5b-instruct-q4_k_m.gguf" ]; then
-    curl -L -O -C - https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf
+if [ ! -f "TinyLlama-1.1B-Chat-v1.0-Heretic.Q4_K_M.gguf" ]; then
+    curl -L -O -C - https://huggingface.co/mradermacher/TinyLlama-1.1B-Chat-v1.0-Heretic-GGUF/resolve/main/TinyLlama-1.1B-Chat-v1.0-Heretic.Q4_K_M.gguf
 else
     echo "Modelo ya descargado."
 fi
