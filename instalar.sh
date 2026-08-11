@@ -87,14 +87,44 @@ if ! grep -q '~/bin' ~/.bashrc 2>/dev/null; then
     echo "export PATH=\$PATH:~/bin" >> ~/.bashrc
 fi
 
-echo "📥 Descargando modelo TinyLlama-1.1B-Chat Heretic (uncensored, ~670MB)..."
+echo "🔍 Detectando RAM del dispositivo..."
+RAM_KB=$(grep MemTotal /proc/meminfo | awk '{print $2}')
+RAM_MB=$((RAM_KB / 1024))
+echo "RAM total detectada: ${RAM_MB}MB"
+
+# Elegimos el modelo según la RAM real del dispositivo, para que Andart
+# nunca reviente por falta de memoria, sin importar si el teléfono tiene
+# 2GB o 8GB. Todo esto sigue corriendo 100% local: nada sale del equipo.
+if [ "$RAM_MB" -le 2200 ]; then
+    MODEL_URL="https://huggingface.co/Triangle104/Qwen2.5-0.5B-Instruct-abliterated-Q8_0-GGUF/resolve/main/qwen2.5-0.5b-instruct-abliterated-q8_0.gguf"
+    MODEL_FILE="qwen2.5-0.5b-instruct-abliterated-q8_0.gguf"
+    MODEL_FORMATO="chatml"
+    echo "📦 Perfil detectado: RAM baja (~${RAM_MB}MB) → Qwen2.5-0.5B-Instruct abliterated (uncensored)"
+else
+    MODEL_URL="https://huggingface.co/mradermacher/TinyLlama-1.1B-Chat-v1.0-Heretic-GGUF/resolve/main/TinyLlama-1.1B-Chat-v1.0-Heretic.Q4_K_M.gguf"
+    MODEL_FILE="TinyLlama-1.1B-Chat-v1.0-Heretic.Q4_K_M.gguf"
+    MODEL_FORMATO="zephyr"
+    echo "📦 Perfil detectado: RAM media/alta (~${RAM_MB}MB) → TinyLlama-1.1B Heretic (uncensored)"
+fi
+
+echo "📥 Descargando modelo ($MODEL_FILE)..."
 mkdir -p ~/modelos
 cd ~/modelos
-if [ ! -f "TinyLlama-1.1B-Chat-v1.0-Heretic.Q4_K_M.gguf" ]; then
-    curl -L -O -C - https://huggingface.co/mradermacher/TinyLlama-1.1B-Chat-v1.0-Heretic-GGUF/resolve/main/TinyLlama-1.1B-Chat-v1.0-Heretic.Q4_K_M.gguf
+if [ ! -f "$MODEL_FILE" ]; then
+    curl -L -O -C - "$MODEL_URL"
 else
     echo "Modelo ya descargado."
 fi
+
+echo "📝 Guardando configuración en ~/.andart/config.json..."
+mkdir -p ~/.andart
+cat > ~/.andart/config.json <<EOF
+{
+  "model_path": "~/modelos/$MODEL_FILE",
+  "formato_chat": "$MODEL_FORMATO",
+  "ram_detectada_mb": $RAM_MB
+}
+EOF
 
 echo ""
 echo "✅ Instalación completa."
