@@ -79,9 +79,17 @@ if [ ! -f "build/bin/llama-cli" ]; then
     exit 1
 fi
 
+if [ ! -f "build/bin/llama-completion" ]; then
+    echo "❌ La compilación terminó pero no se generó build/bin/llama-completion."
+    echo "   Revisa el log de arriba en busca de la primera línea que diga 'error:' (no 'warning:')."
+    exit 1
+fi
+
 mkdir -p ~/bin
 cp build/bin/llama-cli ~/bin/
 chmod +x ~/bin/llama-cli
+cp build/bin/llama-completion ~/bin/
+chmod +x ~/bin/llama-completion
 export PATH=$PATH:~/bin
 if ! grep -q '~/bin' ~/.bashrc 2>/dev/null; then
     echo "export PATH=\$PATH:~/bin" >> ~/.bashrc
