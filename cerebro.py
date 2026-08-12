@@ -10,21 +10,17 @@ class CerebroAndart:
         self.llm = LLMEngine()  # Motor de IA local
 
     def _requiere_internet(self, texto):
-        """Detecta si la consulta necesita búsqueda en internet (hacking,
-        exploits, vulnerabilidades, scripts) o si puede responder el modelo
-        con su propio conocimiento."""
-        PALABRAS_HACKING = [
-            "exploit", "cve", "vulnerabilidad", "payload", "hack",
-            "pentest", "seguridad", "script", "escanear", "puertos",
-            "fuerza bruta", "sql injection", "xss", "csrf", "apache",
-            "nginx", "ssh", "ftp", "metasploit", "nmap", "nikto",
-            "hackerone", "bug bounty", "0day", "rootkit", "ransomware",
-            "backdoor", "malware", "keylogger", "botnet", "ddos",
-            "phishing", "spoofing", "sniffing", "mitm", "proxy",
-            "tor", "deep web", "dark web", "onion", "auditar",
-            "pentesting", "red team", "blue team", "reconocimiento"
+        """Detecta si la consulta necesita información actual/externa
+        (precios, noticias, clima, eventos recientes, datos específicos de
+        una persona/empresa/lugar) o si es una pregunta de conocimiento
+        general que el modelo puede responder con lo que ya sabe."""
+        SEÑALES_ACTUALIDAD = [
+            "hoy", "ahora", "actual", "actualidad", "reciente", "último",
+            "última", "noticia", "noticias", "precio", "cotización",
+            "clima", "tiempo en", "quién es", "quien es", "cuándo",
+            "cuando fue", "resultado", "versión más nueva", "última versión",
         ]
-        return any(p in texto.lower() for p in PALABRAS_HACKING)
+        return any(s in texto.lower() for s in SEÑALES_ACTUALIDAD)
 
     def procesar(self, texto):
         self.historial.append({"usuario": texto})
@@ -54,6 +50,7 @@ class CerebroAndart:
                 contexto_web=contenido_web[:1500] if contenido_web else None,
             )
         else:
+            explicacion = "Generando respuesta con IA..."
             # El modelo responde con su propio conocimiento, sin internet
             salida_final = self.llm.responder(
                 pregunta=consulta_real,
