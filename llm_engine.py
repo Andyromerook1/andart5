@@ -138,7 +138,7 @@ class LLMEngine:
                 "-n", str(n_predict),
                 "--temp", "0.7",
                 "--no-display-prompt",
-                "--simple-io",      # ← Oculta el logo y la interfaz interactiva
+                "--simple-io",
                 "-no-cnv",
             ]
             for rp in self._reverse_prompts():
@@ -150,7 +150,6 @@ class LLMEngine:
                     capture_output=True,
                     text=True,
                     timeout=timeout,
-                    stderr=subprocess.DEVNULL,  # ← Oculta el banner y mensajes de carga
                 )
             except subprocess.TimeoutExpired:
                 return "Error: la generación tardó demasiado y fue cancelada (timeout)."
