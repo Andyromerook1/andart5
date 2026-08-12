@@ -5,7 +5,7 @@ from llm_engine import LLMEngine
 
 class CerebroAndart:
     def __init__(self):
-        self.historial = []
+        self.historial = []  # lista de dicts {"usuario": ..., "andart": ...}
         self.investigador = Investigador(profundidad=2)
         self.llm = LLMEngine()  # Motor de IA local
 
@@ -21,6 +21,20 @@ class CerebroAndart:
             "cuando fue", "resultado", "versión más nueva", "última versión",
         ]
         return any(s in texto.lower() for s in SEÑALES_ACTUALIDAD)
+
+    def _historial_para_llm(self):
+        """Convierte self.historial (lista de dicts) al formato que espera
+        LLMEngine: lista de tuplas (pregunta, respuesta), para que el
+        modelo tenga memoria de la conversación."""
+        turnos = []
+        pendiente = None
+        for entrada in self.historial:
+            if "usuario" in entrada:
+                pendiente = entrada["usuario"]
+            elif "andart" in entrada and pendiente is not None:
+                turnos.append((pendiente, entrada["andart"]))
+                pendiente = None
+        return turnos
 
     def procesar(self, texto):
         self.historial.append({"usuario": texto})
@@ -41,20 +55,23 @@ class CerebroAndart:
             self.investigador.profundidad = 2
             explicacion = "Investigando y generando respuesta con IA..."
 
-        # Decidir si necesita internet o responde directo con el modelo
+        # Turnos previos (sin contar la pregunta actual, que ya se agregó
+        # arriba) para que el modelo recuerde de qué venimos hablando.
+        historial_para_llm = self._historial_para_llm()
+
         if self._requiere_internet(consulta_real):
-            # Andart busca en internet primero
             contenido_web = self.investigador.investigar(consulta_real)
             salida_final = self.llm.responder(
                 pregunta=consulta_real,
                 contexto_web=contenido_web[:1500] if contenido_web else None,
+                historial=historial_para_llm,
             )
         else:
             explicacion = "Generando respuesta con IA..."
-            # El modelo responde con su propio conocimiento, sin internet
             salida_final = self.llm.responder(
                 pregunta=consulta_real,
                 contexto_web=None,
+                historial=historial_para_llm,
             )
 
         self.historial.append({"andart": salida_final})
