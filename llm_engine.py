@@ -35,10 +35,6 @@ class LLMEngine:
     def __init__(self, model_path=None, formato_chat=None):
         config = _cargar_config()
 
-        # Si no se pasa nada explícito, usamos lo que el instalador detectó
-        # automáticamente según la RAM del dispositivo. Si tampoco hay
-        # config (por ejemplo, instalación manual vieja), caemos a un
-        # default razonable.
         if model_path is None:
             model_path = config.get(
                 "model_path",
@@ -49,36 +45,62 @@ class LLMEngine:
 
         self.model_path = os.path.expanduser(model_path)
         self.formato_chat = formato_chat
-        self.binario = os.path.expanduser("~/bin/llama-cli")
 
-        # Verificar que el binario exista
+        # llama-completion es la herramienta correcta para "una pregunta,
+        # una respuesta, termina" (llama-cli en esta versión es para chat
+        # interactivo y no soporta bien -no-cnv, causaba cuelgues erráticos).
+        self.binario = os.path.expanduser("~/bin/llama-completion")
+
         if not os.path.isfile(self.binario):
             raise FileNotFoundError(
                 f"No se encuentra {self.binario}. "
-                "Asegúrate de haber compilado llama.cpp y copiado el binario a ~/bin/"
+                "Corré: cp ~/llama.cpp/build/bin/llama-completion ~/bin/ "
+                "&& chmod +x ~/bin/llama-completion"
             )
 
-        # Verificar que el modelo exista
         if not os.path.isfile(self.model_path):
             raise FileNotFoundError(
                 f"No se encuentra el modelo en {self.model_path}. "
                 "Verifica la ruta o corré el instalador de nuevo."
             )
 
-    def armar_prompt_chat(self, pregunta, contexto_web=None, system_prompt=None):
+    def _formatear_turno(self, rol, contenido):
+        """Da formato a un solo turno (system/user/assistant) según el
+        formato de chat del modelo instalado."""
+        if self.formato_chat == "chatml":
+            return f"<|im_start|>{rol}\n{contenido}<|im_end|>\n"
+        # zephyr
+        cierre = "" if rol == "assistant" else "</s>"
+        return f"<|{rol}|>\n{contenido}{cierre}\n"
+
+    def armar_prompt_chat(self, pregunta, contexto_web=None, system_prompt=None, historial=None):
         """
-        Arma el prompt en el formato de chat correcto según el modelo
-        instalado: Zephyr (<|system|>/<|user|>/<|assistant|>) para
-        TinyLlama, o ChatML (<|im_start|>/<|im_end|>) para Qwen. El
-        formato se elige solo, según lo que haya detectado el instalador.
+        Arma el prompt completo: system + (opcional) turnos previos de la
+        conversación (para que el modelo tenga memoria dentro de la sesión)
+        + la pregunta actual, todo en el formato de chat correcto según el
+        modelo instalado (Zephyr para TinyLlama, ChatML para Qwen).
+
+        `historial`: lista opcional de tuplas [(pregunta1, respuesta1), ...]
+        con turnos anteriores de la misma sesión.
         """
         if system_prompt is None:
             system_prompt = (
                 "Eres Andart. Respondes en español, de forma clara y "
-                "breve, explicando paso a paso como un profesor. Usa tu "
-                "propio conocimiento. Ignora publicidad si aparece en la "
+                "breve, explicando paso a paso como un profesor. Recordás "
+                "lo que se habló antes en esta conversación. Usa tu propio "
+                "conocimiento. Ignora publicidad si aparece en la "
                 "información web."
             )
+
+        partes = [self._formatear_turno("system", system_prompt)]
+
+        # Turnos previos, para que el modelo tenga contexto de la charla
+        # (limitamos a los últimos 3 intercambios para no inflar el
+        # contexto y que siga andando rápido en hardware chico).
+        if historial:
+            for pregunta_prev, respuesta_prev in historial[-3:]:
+                partes.append(self._formatear_turno("user", pregunta_prev))
+                partes.append(self._formatear_turno("assistant", respuesta_prev))
 
         if contexto_web:
             mensaje_usuario = (
@@ -88,31 +110,17 @@ class LLMEngine:
         else:
             mensaje_usuario = pregunta
 
-        if self.formato_chat == "chatml":
-            return (
-                f"<|im_start|>system\n{system_prompt}<|im_end|>\n"
-                f"<|im_start|>user\n{mensaje_usuario}<|im_end|>\n"
-                f"<|im_start|>assistant\n"
-            )
+        partes.append(self._formatear_turno("user", mensaje_usuario))
 
-        # default: zephyr (TinyLlama)
-        return (
-            f"<|system|>\n{system_prompt}</s>\n"
-            f"<|user|>\n{mensaje_usuario}</s>\n"
-            f"<|assistant|>\n"
-        )
-
-    def _reverse_prompts(self):
-        """Tokens de corte para que el modelo no siga alucinando turnos
-        nuevos de conversación, según el formato de chat en uso."""
+        # Dejamos abierto el turno del asistente para que continúe ahí
         if self.formato_chat == "chatml":
-            return ["<|im_start|>"]
-        return ["<|user|>", "<|system|>"]
+            partes.append("<|im_start|>assistant\n")
+        else:
+            partes.append("<|assistant|>\n")
+
+        return "".join(partes)
 
     def generar(self, prompt, timeout=300, ctx_size=2048, n_predict=200):
-        # Chequeo de RAM libre ANTES de arrancar: si está muy baja, Android
-        # puede matar el proceso a mitad de la generación, lo que da un
-        # error confuso. Mejor avisar claro de entrada.
         ram_libre = _ram_disponible_mb()
         if ram_libre is not None and ram_libre < 250:
             return (
@@ -120,9 +128,6 @@ class LLMEngine:
                 "Cerrá otras apps en segundo plano y probá de nuevo."
             )
 
-        # Para prompts largos (texto de internet incluido) es más robusto
-        # escribirlo a un archivo temporal y usar -f, en vez de pasarlo
-        # como argumento de línea de comandos con -p.
         with tempfile.NamedTemporaryFile(
             mode="w", suffix=".txt", delete=False, encoding="utf-8"
         ) as tmp:
@@ -137,12 +142,7 @@ class LLMEngine:
                 "-c", str(ctx_size),
                 "-n", str(n_predict),
                 "--temp", "0.7",
-                "--no-display-prompt",
-                "--simple-io",
-                "-no-cnv",
             ]
-            for rp in self._reverse_prompts():
-                comando += ["-r", rp]
 
             try:
                 proceso = subprocess.run(
@@ -161,16 +161,16 @@ class LLMEngine:
 
             return proceso.stdout.strip()
         finally:
-            # Limpiar el archivo temporal siempre, haya salido bien o mal
             try:
                 os.remove(tmp_path)
             except OSError:
                 pass
 
-    def responder(self, pregunta, contexto_web=None, system_prompt=None, **kwargs):
+    def responder(self, pregunta, contexto_web=None, system_prompt=None, historial=None, **kwargs):
         """
-        Método de conveniencia: arma el prompt de chat y genera la respuesta
-        en un solo paso. Esto es lo que llamarías desde cerebro.py.
+        Método de conveniencia: arma el prompt de chat (con memoria de
+        turnos previos si se pasa `historial`) y genera la respuesta en un
+        solo paso. Esto es lo que llamarías desde cerebro.py.
         """
-        prompt = self.armar_prompt_chat(pregunta, contexto_web, system_prompt)
+        prompt = self.armar_prompt_chat(pregunta, contexto_web, system_prompt, historial)
         return self.generar(prompt, **kwargs)
