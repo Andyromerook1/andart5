@@ -9,6 +9,23 @@ class CerebroAndart:
         self.investigador = Investigador(profundidad=2)
         self.llm = LLMEngine()  # Motor de IA local
 
+    def _requiere_internet(self, texto):
+        """Detecta si la consulta necesita búsqueda en internet (hacking,
+        exploits, vulnerabilidades, scripts) o si puede responder el modelo
+        con su propio conocimiento."""
+        PALABRAS_HACKING = [
+            "exploit", "cve", "vulnerabilidad", "payload", "hack",
+            "pentest", "seguridad", "script", "escanear", "puertos",
+            "fuerza bruta", "sql injection", "xss", "csrf", "apache",
+            "nginx", "ssh", "ftp", "metasploit", "nmap", "nikto",
+            "hackerone", "bug bounty", "0day", "rootkit", "ransomware",
+            "backdoor", "malware", "keylogger", "botnet", "ddos",
+            "phishing", "spoofing", "sniffing", "mitm", "proxy",
+            "tor", "deep web", "dark web", "onion", "auditar",
+            "pentesting", "red team", "blue team", "reconocimiento"
+        ]
+        return any(p in texto.lower() for p in PALABRAS_HACKING)
+
     def procesar(self, texto):
         self.historial.append({"usuario": texto})
         t = texto.lower()
@@ -28,16 +45,20 @@ class CerebroAndart:
             self.investigador.profundidad = 2
             explicacion = "Investigando y generando respuesta con IA..."
 
-        # 1. Obtener contenido crudo de la web
-        contenido_web = self.investigador.investigar(consulta_real)
-
-        # 2. Generar respuesta: el LLMEngine arma el prompt de chat correcto
-        #    (formato Zephyr de TinyLlama) y lo manda al modelo por archivo,
-        #    no hace falta armar el prompt a mano acá.
-        salida_final = self.llm.responder(
-            pregunta=consulta_real,
-            contexto_web=contenido_web[:1500] if contenido_web else None,
-        )
+        # Decidir si necesita internet o responde directo con el modelo
+        if self._requiere_internet(consulta_real):
+            # Andart busca en internet primero
+            contenido_web = self.investigador.investigar(consulta_real)
+            salida_final = self.llm.responder(
+                pregunta=consulta_real,
+                contexto_web=contenido_web[:1500] if contenido_web else None,
+            )
+        else:
+            # El modelo responde con su propio conocimiento, sin internet
+            salida_final = self.llm.responder(
+                pregunta=consulta_real,
+                contexto_web=None,
+            )
 
         self.historial.append({"andart": salida_final})
         return "ia_respuesta", explicacion, salida_final
