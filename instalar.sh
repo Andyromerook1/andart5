@@ -96,10 +96,10 @@ echo "RAM total detectada: ${RAM_MB}MB"
 # nunca reviente por falta de memoria, sin importar si el teléfono tiene
 # 2GB o 8GB. Todo esto sigue corriendo 100% local: nada sale del equipo.
 if [ "$RAM_MB" -le 2200 ]; then
-    MODEL_URL="https://huggingface.co/Triangle104/Qwen2.5-0.5B-Instruct-abliterated-Q8_0-GGUF/resolve/main/qwen2.5-0.5b-instruct-abliterated-q8_0.gguf"
-    MODEL_FILE="qwen2.5-0.5b-instruct-abliterated-q8_0.gguf"
+    MODEL_URL="https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf"
+    MODEL_FILE="qwen2.5-0.5b-instruct-q4_k_m.gguf"
     MODEL_FORMATO="chatml"
-    echo "📦 Perfil detectado: RAM baja (~${RAM_MB}MB) → Qwen2.5-0.5B-Instruct abliterated (uncensored)"
+    echo "📦 Perfil detectado: RAM baja (~${RAM_MB}MB) → Qwen2.5-0.5B-Instruct"
 else
     MODEL_URL="https://huggingface.co/mradermacher/TinyLlama-1.1B-Chat-v1.0-Heretic-GGUF/resolve/main/TinyLlama-1.1B-Chat-v1.0-Heretic.Q4_K_M.gguf"
     MODEL_FILE="TinyLlama-1.1B-Chat-v1.0-Heretic.Q4_K_M.gguf"
@@ -113,8 +113,21 @@ cd ~/modelos
 if [ ! -f "$MODEL_FILE" ]; then
     curl -L -O -C - "$MODEL_URL"
 else
-    echo "Modelo ya descargado."
+    echo "Modelo ya descargado, verificando integridad..."
 fi
+
+echo "🔎 Verificando que el archivo sea un GGUF válido..."
+MAGIC=$(head -c 4 "$MODEL_FILE")
+if [ "$MAGIC" != "GGUF" ]; then
+    echo "❌ El archivo descargado NO es un modelo GGUF válido (probablemente"
+    echo "   se bajó una página de error en vez del modelo). Primeros bytes:"
+    head -c 200 "$MODEL_FILE"
+    echo ""
+    echo "   Borrando archivo corrupto para no dejar algo roto instalado."
+    rm -f "$MODEL_FILE"
+    exit 1
+fi
+echo "✅ Archivo GGUF verificado correctamente."
 
 echo "📝 Guardando configuración en ~/.andart/config.json..."
 mkdir -p ~/.andart
