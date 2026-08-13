@@ -101,18 +101,32 @@ RAM_MB=$((RAM_KB / 1024))
 echo "RAM total detectada: ${RAM_MB}MB"
 
 # Elegimos el modelo según la RAM real del dispositivo, para que Andart
-# nunca reviente por falta de memoria, sin importar si el teléfono tiene
-# 2GB o 8GB. Todo esto sigue corriendo 100% local: nada sale del equipo.
+# nunca reviente por falta de memoria. Todo esto sigue corriendo 100%
+# local: nada sale del equipo.
+#
+# Los tres escalones usan Qwen2.5-Coder abliterated (versión de bartowski
+# en HuggingFace): mejor que TinyLlama en generación/explicación de código,
+# y sin el reflejo de rechazo del modelo base. Mismo formato de chat
+# (chatml) en los tres, para no tener que mezclar formatos en el resto
+# de la app.
 if [ "$RAM_MB" -le 2200 ]; then
-    MODEL_URL="https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf"
-    MODEL_FILE="qwen2.5-0.5b-instruct-q4_k_m.gguf"
+    MODEL_URL="https://huggingface.co/bartowski/Qwen2.5-Coder-1.5B-Instruct-abliterated-GGUF/resolve/main/Qwen2.5-Coder-1.5B-Instruct-abliterated-Q4_K_M.gguf"
+    MODEL_FILE="Qwen2.5-Coder-1.5B-Instruct-abliterated-Q4_K_M.gguf"
     MODEL_FORMATO="chatml"
-    echo "📦 Perfil detectado: RAM baja (~${RAM_MB}MB) → Qwen2.5-0.5B-Instruct"
+    CTX_SIZE=2048
+    echo "📦 Perfil detectado: RAM baja (~${RAM_MB}MB) → Qwen2.5-Coder-1.5B abliterated, ctx=2048"
+elif [ "$RAM_MB" -le 3500 ]; then
+    MODEL_URL="https://huggingface.co/bartowski/Qwen2.5-Coder-1.5B-Instruct-abliterated-GGUF/resolve/main/Qwen2.5-Coder-1.5B-Instruct-abliterated-Q4_K_M.gguf"
+    MODEL_FILE="Qwen2.5-Coder-1.5B-Instruct-abliterated-Q4_K_M.gguf"
+    MODEL_FORMATO="chatml"
+    CTX_SIZE=4096
+    echo "📦 Perfil detectado: RAM media (~${RAM_MB}MB) → Qwen2.5-Coder-1.5B abliterated, ctx=4096"
 else
-    MODEL_URL="https://huggingface.co/mradermacher/TinyLlama-1.1B-Chat-v1.0-Heretic-GGUF/resolve/main/TinyLlama-1.1B-Chat-v1.0-Heretic.Q4_K_M.gguf"
-    MODEL_FILE="TinyLlama-1.1B-Chat-v1.0-Heretic.Q4_K_M.gguf"
-    MODEL_FORMATO="zephyr"
-    echo "📦 Perfil detectado: RAM media/alta (~${RAM_MB}MB) → TinyLlama-1.1B Heretic (uncensored)"
+    MODEL_URL="https://huggingface.co/bartowski/Qwen2.5-Coder-3B-Instruct-abliterated-GGUF/resolve/main/Qwen2.5-Coder-3B-Instruct-abliterated-Q4_K_M.gguf"
+    MODEL_FILE="Qwen2.5-Coder-3B-Instruct-abliterated-Q4_K_M.gguf"
+    MODEL_FORMATO="chatml"
+    CTX_SIZE=4096
+    echo "📦 Perfil detectado: RAM media-alta (~${RAM_MB}MB) → Qwen2.5-Coder-3B abliterated, ctx=4096"
 fi
 
 echo "📥 Descargando modelo ($MODEL_FILE)..."
@@ -143,6 +157,7 @@ cat > ~/.andart/config.json <<EOF
 {
   "model_path": "~/modelos/$MODEL_FILE",
   "formato_chat": "$MODEL_FORMATO",
+  "ctx_size": $CTX_SIZE,
   "ram_detectada_mb": $RAM_MB
 }
 EOF
