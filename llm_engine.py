@@ -85,11 +85,11 @@ class LLMEngine:
         """
         if system_prompt is None:
             system_prompt = (
-                "Eres Andart. Respondes en español, de forma clara y "
-                "breve, explicando paso a paso como un profesor. Recordás "
-                "lo que se habló antes en esta conversación. Usa tu propio "
-                "conocimiento. Ignora publicidad si aparece en la "
-                "información web."
+                "Eres Andart. Respondes siempre en el mismo idioma en que "
+                "te escribe el usuario, de forma clara y breve, explicando "
+                "paso a paso como un profesor. Recordás lo que se habló "
+                "antes en esta conversación. Usa tu propio conocimiento. "
+                "Ignora publicidad si aparece en la información web."
             )
 
         partes = [self._formatear_turno("system", system_prompt)]
@@ -119,6 +119,14 @@ class LLMEngine:
             partes.append("<|assistant|>\n")
 
         return "".join(partes)
+
+    def _marca_apertura_assistant(self):
+        """La marca exacta con la que abrimos el turno del asistente al
+        armar el prompt. Nos sirve para cortar el eco del prompt que
+        llama-completion mete en su propio stdout."""
+        if self.formato_chat == "chatml":
+            return "<|im_start|>assistant\n"
+        return "<|assistant|>\n"
 
     def generar(self, prompt, timeout=300, ctx_size=4096, n_predict=700):
         ram_libre = _ram_disponible_mb()
@@ -161,7 +169,25 @@ class LLMEngine:
             if proceso.returncode != 0:
                 return f"Error al generar respuesta: {proceso.stderr.strip()}"
 
-            return proceso.stdout.strip()
+            salida_cruda = proceso.stdout
+
+            # llama-completion devuelve el prompt completo (system + eco de
+            # todo lo anterior) SEGUIDO de lo que generó. Nos quedamos solo
+            # con lo que vino DESPUÉS de la última marca de "assistant",
+            # que es la respuesta nueva real. Sin esto, cada respuesta
+            # arrastraba todo el prompt de vuelta al historial y crecía
+            # sin control turno a turno.
+            marca = self._marca_apertura_assistant()
+            idx = salida_cruda.rfind(marca)
+            if idx != -1:
+                respuesta = salida_cruda[idx + len(marca):]
+            else:
+                respuesta = salida_cruda
+
+            # Limpiar marcador de fin de generación y espacios sobrantes
+            respuesta = respuesta.replace("[end of text]", "").strip()
+
+            return respuesta
         finally:
             try:
                 os.remove(tmp_path)
