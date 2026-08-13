@@ -142,6 +142,7 @@ class LLMEngine:
                 "-c", str(ctx_size),
                 "-n", str(n_predict),
                 "--temp", "0.7",
+                "-no-cnv",
             ]
 
             try:
@@ -150,6 +151,7 @@ class LLMEngine:
                     capture_output=True,
                     text=True,
                     timeout=timeout,
+                    stdin=subprocess.DEVNULL,
                 )
             except subprocess.TimeoutExpired:
                 return "Error: la generación tardó demasiado y fue cancelada (timeout)."
