@@ -120,7 +120,7 @@ class LLMEngine:
 
         return "".join(partes)
 
-    def generar(self, prompt, timeout=300, ctx_size=2048, n_predict=200):
+    def generar(self, prompt, timeout=300, ctx_size=4096, n_predict=700):
         ram_libre = _ram_disponible_mb()
         if ram_libre is not None and ram_libre < 250:
             return (
