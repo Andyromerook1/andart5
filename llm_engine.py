@@ -1,6 +1,7 @@
 import subprocess
 import os
 import json
+import re
 import tempfile
 
 CONFIG_PATH = os.path.expanduser("~/.andart/config.json")
@@ -224,6 +225,13 @@ class LLMEngine:
 
             # Limpiar marcador de fin de generación y espacios sobrantes
             respuesta = respuesta.replace("[end of text]", "").strip()
+
+            # Algunos modelos, al ver el sentinel de apertura en el
+            # prompt, imitan el patrón y generan su propia variante como
+            # "cierre" al final de la respuesta (ej: algo parecido a
+            # '<<<ANDART_FIN_...>>>'). Lo recortamos si aparece, sea cual
+            # sea la variante exacta que el modelo haya inventado.
+            respuesta = re.sub(r"<<<[^<>]{0,80}>>>?", "", respuesta).strip()
 
             return respuesta
         finally:
