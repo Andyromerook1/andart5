@@ -1,0 +1,466 @@
+/* ============================================================
+   ANDART — tokens de diseño
+   Paleta:  --bg-void #05070a · --panel rgba(13,18,24,.68)
+            --cian #3ee6c4 (acento frío, IA/técnico)
+            --magenta #ff5f87 (acento cálido, usuario/alertas)
+   Tipos:   Space Grotesk (marca/headers) · Inter (texto) · JetBrains Mono (código/chrome técnico)
+   ============================================================ */
+
+:root {
+  --bg-void: #05070a;
+  --panel: rgba(13, 18, 24, 0.68);
+  --panel-borde: rgba(255, 255, 255, 0.08);
+  --cian: #3ee6c4;
+  --cian-suave: rgba(62, 230, 196, 0.16);
+  --magenta: #ff5f87;
+  --magenta-suave: rgba(255, 95, 135, 0.16);
+  --texto: #eef3f2;
+  --texto-tenue: #93a29e;
+  --code-bg: #0b0f14;
+
+  --fuente-marca: "Space Grotesk", sans-serif;
+  --fuente-texto: "Inter", sans-serif;
+  --fuente-mono: "JetBrains Mono", monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overscroll-behavior: none;
+}
+
+body {
+  font-family: var(--fuente-texto);
+  color: var(--texto);
+  background: var(--bg-void);
+}
+
+/* ---------- fondo ---------- */
+
+.fondo-imagen {
+  position: fixed;
+  inset: 0;
+  background-image: url("https://i.postimg.cc/HsB0XR24/Gemini-Generated-Image-55771f55771f5577.jpg");
+  background-size: cover;
+  background-position: center;
+  filter: saturate(0.85) brightness(0.55);
+  z-index: -2;
+}
+
+.fondo-degrade {
+  position: fixed;
+  inset: 0;
+  background:
+    radial-gradient(ellipse at top, rgba(5, 7, 10, 0.35) 0%, rgba(5, 7, 10, 0.88) 65%),
+    linear-gradient(180deg, rgba(5, 7, 10, 0.55) 0%, rgba(5, 7, 10, 0.78) 100%);
+  z-index: -1;
+}
+
+/* ---------- layout ---------- */
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  max-width: 760px;
+  margin: 0 auto;
+}
+
+/* ---------- header ---------- */
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 18px;
+  background: var(--panel);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border-bottom: 1px solid var(--panel-borde);
+  flex-shrink: 0;
+}
+
+.header-marca {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.header-icono {
+  font-size: 22px;
+  filter: drop-shadow(0 0 8px rgba(62, 230, 196, 0.35));
+}
+
+.header-texto h1 {
+  font-family: var(--fuente-marca);
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  margin: 0;
+  color: var(--texto);
+  text-shadow: 0 0 14px rgba(62, 230, 196, 0.45);
+}
+
+.cursor-parpadeo {
+  color: var(--cian);
+  animation: parpadeo 1.1s steps(2, start) infinite;
+}
+
+@keyframes parpadeo {
+  to { opacity: 0; }
+}
+
+.header-sub {
+  margin: 1px 0 0;
+  font-family: var(--fuente-mono);
+  font-size: 11px;
+  color: var(--texto-tenue);
+  letter-spacing: 0.03em;
+}
+
+.header-estado {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--fuente-mono);
+  font-size: 11px;
+  color: var(--texto-tenue);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.punto-estado {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--texto-tenue);
+  transition: background 0.3s, box-shadow 0.3s;
+}
+
+.header-estado.conectado .punto-estado {
+  background: var(--cian);
+  box-shadow: 0 0 8px var(--cian);
+  animation: latido 2.4s ease-in-out infinite;
+}
+
+.header-estado.error .punto-estado {
+  background: var(--magenta);
+  box-shadow: 0 0 8px var(--magenta);
+}
+
+@keyframes latido {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+
+/* ---------- chat ---------- */
+
+.chat {
+  flex: 1;
+  overflow-y: auto;
+  padding: 18px 16px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  scroll-behavior: smooth;
+}
+
+.chat::-webkit-scrollbar {
+  width: 6px;
+}
+.chat::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 3px;
+}
+
+.mensaje {
+  max-width: 82%;
+  padding: 12px 15px;
+  border-radius: 16px;
+  line-height: 1.5;
+  font-size: 14.5px;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  word-wrap: break-word;
+  position: relative;
+  animation: entrada 0.25s ease-out;
+}
+
+@keyframes entrada {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.mensaje p {
+  margin: 0 0 8px;
+}
+.mensaje p:last-child {
+  margin-bottom: 0;
+}
+
+.mensaje-usuario {
+  align-self: flex-end;
+  background: linear-gradient(135deg, rgba(255, 95, 135, 0.22), rgba(255, 95, 135, 0.10));
+  border: 1px solid rgba(255, 95, 135, 0.3);
+  border-bottom-right-radius: 4px;
+  color: var(--texto);
+}
+
+.mensaje-ia {
+  align-self: flex-start;
+  background: var(--panel);
+  border: 1px solid var(--panel-borde);
+  border-bottom-left-radius: 4px;
+}
+
+.mensaje-ia::before {
+  content: "ANDART";
+  display: block;
+  font-family: var(--fuente-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--cian);
+  margin-bottom: 6px;
+  opacity: 0.85;
+}
+
+.mensaje-sistema {
+  align-self: center;
+  background: transparent;
+  border: 1px dashed var(--panel-borde);
+  color: var(--texto-tenue);
+  font-family: var(--fuente-mono);
+  font-size: 12px;
+  text-align: center;
+  max-width: 90%;
+}
+
+.mensaje-error {
+  align-self: flex-start;
+  background: var(--magenta-suave);
+  border: 1px solid rgba(255, 95, 135, 0.35);
+  color: var(--texto);
+}
+
+/* botón copiar por mensaje */
+
+.boton-copiar-mensaje {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  opacity: 0;
+  transition: opacity 0.15s;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--panel-borde);
+  border-radius: 6px;
+  color: var(--texto-tenue);
+  cursor: pointer;
+  padding: 4px 6px;
+  display: flex;
+  align-items: center;
+}
+
+.mensaje:hover .boton-copiar-mensaje {
+  opacity: 1;
+}
+
+.boton-copiar-mensaje:hover {
+  color: var(--cian);
+  border-color: var(--cian-suave);
+}
+
+.boton-copiar-mensaje.copiado {
+  color: var(--cian);
+  opacity: 1;
+}
+
+/* ---------- bloques de código ---------- */
+
+.bloque-codigo {
+  position: relative;
+  margin: 10px 0;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid var(--panel-borde);
+  background: var(--code-bg);
+}
+
+.bloque-codigo-barra {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 7px 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border-bottom: 1px solid var(--panel-borde);
+  font-family: var(--fuente-mono);
+  font-size: 11px;
+  color: var(--texto-tenue);
+  letter-spacing: 0.03em;
+}
+
+.boton-copiar-codigo {
+  background: none;
+  border: 1px solid var(--panel-borde);
+  border-radius: 5px;
+  color: var(--texto-tenue);
+  font-family: var(--fuente-mono);
+  font-size: 11px;
+  padding: 3px 8px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.boton-copiar-codigo:hover {
+  color: var(--cian);
+  border-color: var(--cian-suave);
+}
+
+.boton-copiar-codigo.copiado {
+  color: var(--cian);
+  border-color: var(--cian);
+}
+
+.bloque-codigo pre {
+  margin: 0;
+  padding: 12px 14px;
+  overflow-x: auto;
+}
+
+.bloque-codigo code {
+  font-family: var(--fuente-mono);
+  font-size: 13px;
+  line-height: 1.55;
+  background: transparent !important;
+}
+
+code.codigo-en-linea {
+  font-family: var(--fuente-mono);
+  font-size: 0.88em;
+  background: rgba(255, 255, 255, 0.08);
+  padding: 1px 5px;
+  border-radius: 4px;
+  color: var(--cian);
+}
+
+/* ---------- "pensando" ---------- */
+
+.pensando {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 20px 8px;
+  font-family: var(--fuente-mono);
+  font-size: 12px;
+  color: var(--texto-tenue);
+  flex-shrink: 0;
+}
+
+.puntos-suspensivos span {
+  display: inline-block;
+  width: 4px;
+  height: 4px;
+  margin-left: 2px;
+  border-radius: 50%;
+  background: var(--cian);
+  animation: rebote 1.2s infinite ease-in-out;
+}
+.puntos-suspensivos span:nth-child(2) { animation-delay: 0.15s; }
+.puntos-suspensivos span:nth-child(3) { animation-delay: 0.3s; }
+
+@keyframes rebote {
+  0%, 80%, 100% { transform: translateY(0); opacity: 0.4; }
+  40% { transform: translateY(-4px); opacity: 1; }
+}
+
+/* ---------- input ---------- */
+
+.barra-input {
+  display: flex;
+  gap: 10px;
+  padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+  background: var(--panel);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border-top: 1px solid var(--panel-borde);
+  flex-shrink: 0;
+}
+
+#campo-mensaje {
+  flex: 1;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--panel-borde);
+  border-radius: 12px;
+  padding: 12px 14px;
+  color: var(--texto);
+  font-family: var(--fuente-texto);
+  font-size: 15px;
+  outline: none;
+  transition: border-color 0.2s, background 0.2s;
+}
+
+#campo-mensaje::placeholder {
+  color: var(--texto-tenue);
+  font-family: var(--fuente-mono);
+  font-size: 13px;
+}
+
+#campo-mensaje:focus {
+  border-color: var(--cian-suave);
+  background: rgba(255, 255, 255, 0.07);
+}
+
+#boton-enviar {
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  border-radius: 12px;
+  border: 1px solid var(--cian-suave);
+  background: linear-gradient(135deg, rgba(62, 230, 196, 0.22), rgba(62, 230, 196, 0.08));
+  color: var(--cian);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform 0.12s, background 0.2s;
+}
+
+#boton-enviar:hover {
+  background: linear-gradient(135deg, rgba(62, 230, 196, 0.32), rgba(62, 230, 196, 0.12));
+}
+
+#boton-enviar:active {
+  transform: scale(0.94);
+}
+
+#boton-enviar:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* ---------- responsive ---------- */
+
+@media (max-width: 480px) {
+  .mensaje {
+    max-width: 88%;
+    font-size: 14px;
+  }
+  .header-texto h1 {
+    font-size: 15px;
+  }
+}
+
+/* respeta reduce-motion */
+@media (prefers-reduced-motion: reduce) {
+  .cursor-parpadeo,
+  .punto-estado,
+  .puntos-suspensivos span,
+  .mensaje {
+    animation: none !important;
+  }
+}
