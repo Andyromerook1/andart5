@@ -50,15 +50,19 @@ class LLMEngine:
         if formato_chat is None:
             formato_chat = config.get("formato_chat", "chatml")
 
-        # Tamaño de contexto: prioridad al que pase quien instancia la
-        # clase, si no al que dejó el instalador en config.json (según
-        # RAM del dispositivo), si no un default conservador.
+        # Tamaño de contexto, tokens máximos a generar, y cuántos turnos
+        # previos de historial mandar: los tres se ajustan según la RAM
+        # del dispositivo (instalar.sh los calcula y los deja en
+        # config.json). En hardware chico, generar de más y arrastrar
+        # mucho historial es justo lo que provoca timeouts.
         if ctx_size is None:
             ctx_size = config.get("ctx_size", 2048)
 
         self.model_path = os.path.expanduser(model_path)
         self.formato_chat = formato_chat
         self.ctx_size = ctx_size
+        self.n_predict_default = config.get("n_predict", 500)
+        self.historial_turnos = config.get("historial_turnos", 2)
 
         # llama-completion es la herramienta correcta para "una pregunta,
         # una respuesta, termina" (llama-cli en esta versión es para chat
@@ -112,11 +116,12 @@ class LLMEngine:
 
         partes = [self._formatear_turno("system", system_prompt)]
 
-        # Turnos previos, para que el modelo tenga contexto de la charla
-        # (limitamos a los últimos 3 intercambios para no inflar el
-        # contexto y que siga andando rápido en hardware chico).
+        # Turnos previos, para que el modelo tenga contexto de la charla.
+        # Cuántos turnos mandar depende de self.historial_turnos (ajustado
+        # según la RAM del dispositivo en config.json) para no inflar el
+        # prompt de más en hardware chico.
         if historial:
-            for pregunta_prev, respuesta_prev in historial[-3:]:
+            for pregunta_prev, respuesta_prev in historial[-self.historial_turnos:]:
                 partes.append(self._formatear_turno("user", pregunta_prev))
                 partes.append(self._formatear_turno("assistant", respuesta_prev))
 
@@ -156,8 +161,9 @@ class LLMEngine:
             return "<|im_start|>assistant\n"
         return "<|assistant|>\n"
 
-    def generar(self, prompt, timeout=300, ctx_size=None, n_predict=700):
+    def generar(self, prompt, timeout=300, ctx_size=None, n_predict=None):
         ctx_size = ctx_size or self.ctx_size
+        n_predict = n_predict or self.n_predict_default
 
         ram_libre = _ram_disponible_mb()
         if ram_libre is not None and ram_libre < 250:
@@ -232,6 +238,19 @@ class LLMEngine:
             # '<<<ANDART_FIN_...>>>'). Lo recortamos si aparece, sea cual
             # sea la variante exacta que el modelo haya inventado.
             respuesta = re.sub(r"<<<[^<>]{0,80}>>>?", "", respuesta).strip()
+
+            # Si después de toda la limpieza no quedó nada, no devolvemos
+            # una burbuja vacía en la interfaz — avisamos qué pasó, para
+            # poder diagnosticarlo (modelo cortado muy corto, n_predict
+            # insuficiente, etc.) en vez de que parezca que Andart no
+            # contestó nada sin explicación.
+            if not respuesta:
+                return (
+                    "[Andart no generó texto en esta respuesta. Puede deberse a "
+                    "que se cortó muy pronto (n_predict bajo) o a un problema de "
+                    "formato en la salida del modelo. Probá de nuevo o con una "
+                    "pregunta más corta.]"
+                )
 
             return respuesta
         finally:
