@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>Andart</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/base16/tomorrow-night.min.css">
+
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<div class="fondo-imagen"></div>
+<div class="fondo-degrade"></div>
+
+<div class="app">
+
+  <header class="header">
+    <div class="header-marca">
+      <span class="header-icono">🏴‍☠️</span>
+      <div class="header-texto">
+        <h1>ANDART<span class="cursor-parpadeo">_</span></h1>
+        <p class="header-sub">v5.1 · asistente local</p>
+      </div>
+    </div>
+    <div class="header-estado" id="estado-conexion">
+      <span class="punto-estado" id="punto-estado"></span>
+      <span id="texto-estado">conectando</span>
+    </div>
+  </header>
+
+  <main class="chat" id="chat">
+    <div class="mensaje mensaje-sistema">
+      <p>Sesión iniciada. Escribí algo para empezar — Andart recuerda el hilo de esta conversación.</p>
+    </div>
+  </main>
+
+  <div class="pensando" id="pensando" hidden>
+    <span class="pensando-texto">Andart está pensando</span>
+    <span class="puntos-suspensivos"><span></span><span></span><span></span></span>
+  </div>
+
+  <form class="barra-input" id="form-input" autocomplete="off">
+    <input
+      type="text"
+      id="campo-mensaje"
+      placeholder="Escribí un mensaje..."
+      maxlength="4000"
+      autofocus
+    />
+    <button type="submit" id="boton-enviar" aria-label="Enviar mensaje">
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="22" y1="2" x2="11" y2="13"></line>
+        <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+      </svg>
+    </button>
+  </form>
+
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
