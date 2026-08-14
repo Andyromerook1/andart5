@@ -9,8 +9,32 @@ const botonEnviar = document.getElementById("boton-enviar");
 const pensando = document.getElementById("pensando");
 const estadoConexion = document.getElementById("estado-conexion");
 const textoEstado = document.getElementById("texto-estado");
+const botonNuevoChat = document.getElementById("boton-nuevo-chat");
 
 let enviando = false;
+
+// ---------- nuevo chat ----------
+
+botonNuevoChat.addEventListener("click", async () => {
+  if (enviando) return;
+  if (chat.children.length > 1 && !confirm("¿Empezar un chat nuevo? Se borra la conversación actual.")) {
+    return;
+  }
+  try {
+    await fetch("/api/nuevo_chat", { method: "POST" });
+  } catch (e) {
+    // Si falla la llamada igual limpiamos la pantalla; el peor caso es
+    // que el backend conserve un historial viejo una request más.
+  }
+  chat.innerHTML = "";
+  const el = document.createElement("div");
+  el.className = "mensaje mensaje-sistema";
+  const p = document.createElement("p");
+  p.textContent = "Chat nuevo. Escribí algo para empezar.";
+  el.appendChild(p);
+  chat.appendChild(el);
+  campo.focus();
+});
 
 // ---------- estado de conexión ----------
 
