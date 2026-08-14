@@ -138,10 +138,40 @@ fi
 echo "📥 Descargando modelo ($MODEL_FILE)..."
 mkdir -p ~/modelos
 cd ~/modelos
-if [ ! -f "$MODEL_FILE" ]; then
-    curl -L -O -C - "$MODEL_URL"
+
+if [ -f "$MODEL_FILE" ] && [ "$(head -c 4 "$MODEL_FILE" 2>/dev/null)" = "GGUF" ]; then
+    echo "✅ El modelo ya está descargado y es válido. Salteando descarga."
 else
-    echo "Modelo ya descargado, verificando integridad..."
+    # Si quedó un archivo corrupto/parcial de un intento anterior, lo
+    # sacamos: descargar SIEMPRE a un .tmp y recién al final renombrar
+    # evita que una descarga cortada a la mitad quede pisando el nombre
+    # real del modelo (que es lo que probablemente pasó la vez anterior).
+    rm -f "$MODEL_FILE" "$MODEL_FILE.tmp"
+
+    DESCARGA_OK=0
+    for intento in 1 2 3; do
+        echo "Intento $intento de 3..."
+        if curl -L --fail \
+                --connect-timeout 20 \
+                --max-time 1800 \
+                --retry 3 --retry-delay 5 \
+                -o "$MODEL_FILE.tmp" \
+                "$MODEL_URL"; then
+            mv "$MODEL_FILE.tmp" "$MODEL_FILE"
+            DESCARGA_OK=1
+            break
+        else
+            echo "⚠️  Intento $intento falló (conexión cortada o muy lenta)."
+            rm -f "$MODEL_FILE.tmp"
+            sleep 5
+        fi
+    done
+
+    if [ "$DESCARGA_OK" -ne 1 ]; then
+        echo "❌ No se pudo descargar el modelo después de 3 intentos."
+        echo "   Probá con wifi en vez de datos móviles y volvé a correr el instalador."
+        exit 1
+    fi
 fi
 
 echo "🔎 Verificando que el archivo sea un GGUF válido..."
