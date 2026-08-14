@@ -55,6 +55,16 @@ def salud():
     return jsonify({"ok": True})
 
 
+@app.route("/api/nuevo_chat", methods=["POST"])
+def nuevo_chat():
+    """Vacía el historial de la conversación actual. No recarga el
+    modelo (eso sería lento y no hace falta) — solo limpia la lista de
+    turnos previos, lo que además hace que las próximas respuestas sean
+    más rápidas al no tener que reprocesar tanto contexto."""
+    cerebro.historial = []
+    return jsonify({"ok": True})
+
+
 if __name__ == "__main__":
     # host="127.0.0.1": solo accesible desde el propio celular por
     # defecto. Tailscale Funnel expone este puerto hacia afuera sin que
