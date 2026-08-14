@@ -105,28 +105,35 @@ echo "RAM total detectada: ${RAM_MB}MB"
 # local: nada sale del equipo.
 #
 # Los tres escalones usan Qwen2.5-Coder abliterated (versión de bartowski
-# en HuggingFace): mejor que TinyLlama en generación/explicación de código,
-# y sin el reflejo de rechazo del modelo base. Mismo formato de chat
-# (chatml) en los tres, para no tener que mezclar formatos en el resto
-# de la app.
+# en HuggingFace). Además de modelo/ctx, ahora también ajustamos
+# n_predict (cuántos tokens genera como máximo) y historial_turnos
+# (cuántos intercambios previos le mandamos de memoria) por escalón,
+# porque en RAM baja generar de más y arrastrar mucho historial es lo
+# que provoca los timeouts.
 if [ "$RAM_MB" -le 2200 ]; then
     MODEL_URL="https://huggingface.co/bartowski/Qwen2.5-Coder-1.5B-Instruct-abliterated-GGUF/resolve/main/Qwen2.5-Coder-1.5B-Instruct-abliterated-Q4_K_M.gguf"
     MODEL_FILE="Qwen2.5-Coder-1.5B-Instruct-abliterated-Q4_K_M.gguf"
     MODEL_FORMATO="chatml"
     CTX_SIZE=2048
-    echo "📦 Perfil detectado: RAM baja (~${RAM_MB}MB) → Qwen2.5-Coder-1.5B abliterated, ctx=2048"
+    N_PREDICT=350
+    HISTORIAL_TURNOS=1
+    echo "📦 Perfil detectado: RAM baja (~${RAM_MB}MB) → Qwen2.5-Coder-1.5B, ctx=2048, n_predict=350, historial=1 turno"
 elif [ "$RAM_MB" -le 3500 ]; then
     MODEL_URL="https://huggingface.co/bartowski/Qwen2.5-Coder-1.5B-Instruct-abliterated-GGUF/resolve/main/Qwen2.5-Coder-1.5B-Instruct-abliterated-Q4_K_M.gguf"
     MODEL_FILE="Qwen2.5-Coder-1.5B-Instruct-abliterated-Q4_K_M.gguf"
     MODEL_FORMATO="chatml"
     CTX_SIZE=4096
-    echo "📦 Perfil detectado: RAM media (~${RAM_MB}MB) → Qwen2.5-Coder-1.5B abliterated, ctx=4096"
+    N_PREDICT=500
+    HISTORIAL_TURNOS=2
+    echo "📦 Perfil detectado: RAM media (~${RAM_MB}MB) → Qwen2.5-Coder-1.5B, ctx=4096, n_predict=500, historial=2 turnos"
 else
     MODEL_URL="https://huggingface.co/bartowski/Qwen2.5-Coder-3B-Instruct-abliterated-GGUF/resolve/main/Qwen2.5-Coder-3B-Instruct-abliterated-Q4_K_M.gguf"
     MODEL_FILE="Qwen2.5-Coder-3B-Instruct-abliterated-Q4_K_M.gguf"
     MODEL_FORMATO="chatml"
     CTX_SIZE=4096
-    echo "📦 Perfil detectado: RAM media-alta (~${RAM_MB}MB) → Qwen2.5-Coder-3B abliterated, ctx=4096"
+    N_PREDICT=700
+    HISTORIAL_TURNOS=3
+    echo "📦 Perfil detectado: RAM media-alta (~${RAM_MB}MB) → Qwen2.5-Coder-3B, ctx=4096, n_predict=700, historial=3 turnos"
 fi
 
 echo "📥 Descargando modelo ($MODEL_FILE)..."
@@ -158,6 +165,8 @@ cat > ~/.andart/config.json <<EOF
   "model_path": "~/modelos/$MODEL_FILE",
   "formato_chat": "$MODEL_FORMATO",
   "ctx_size": $CTX_SIZE,
+  "n_predict": $N_PREDICT,
+  "historial_turnos": $HISTORIAL_TURNOS,
   "ram_detectada_mb": $RAM_MB
 }
 EOF
@@ -165,4 +174,4 @@ EOF
 echo ""
 echo "✅ Instalación completa."
 ~/bin/llama-cli --version
-echo "Vuelve a la carpeta del proyecto (cd ~/andart5) y ejecuta python main.py"
+echo "Vuelve a la carpeta del proyecto (cd ~/andart5) y ejecuta python servidor.py"
