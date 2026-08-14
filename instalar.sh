@@ -105,11 +105,10 @@ echo "RAM total detectada: ${RAM_MB}MB"
 # local: nada sale del equipo.
 #
 # Los tres escalones usan Qwen2.5-Coder abliterated (versión de bartowski
-# en HuggingFace). Además de modelo/ctx, ahora también ajustamos
-# n_predict (cuántos tokens genera como máximo) y historial_turnos
-# (cuántos intercambios previos le mandamos de memoria) por escalón,
-# porque en RAM baja generar de más y arrastrar mucho historial es lo
-# que provoca los timeouts.
+# en HuggingFace): mejor que TinyLlama en generación/explicación de código,
+# y sin el reflejo de rechazo del modelo base. Mismo formato de chat
+# (chatml) en los tres, para no tener que mezclar formatos en el resto
+# de la app.
 if [ "$RAM_MB" -le 2200 ]; then
     MODEL_URL="https://huggingface.co/bartowski/Qwen2.5-Coder-1.5B-Instruct-abliterated-GGUF/resolve/main/Qwen2.5-Coder-1.5B-Instruct-abliterated-Q4_K_M.gguf"
     MODEL_FILE="Qwen2.5-Coder-1.5B-Instruct-abliterated-Q4_K_M.gguf"
