@@ -124,6 +124,44 @@ body {
   letter-spacing: 0.03em;
 }
 
+.header-derecha {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.boton-nuevo-chat {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--panel-borde);
+  border-radius: 8px;
+  color: var(--texto-tenue);
+  font-family: var(--fuente-mono);
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  padding: 6px 10px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+
+.boton-nuevo-chat:hover {
+  color: var(--cian);
+  border-color: var(--cian-suave);
+  background: var(--cian-suave);
+}
+
+.boton-nuevo-chat span {
+  white-space: nowrap;
+}
+
+@media (max-width: 380px) {
+  .boton-nuevo-chat span {
+    display: none;
+  }
+}
+
 .header-estado {
   display: flex;
   align-items: center;
