@@ -2,9 +2,15 @@ import subprocess
 import os
 import json
 import re
-import tempfile
+import time
+import atexit
+
+import requests
 
 CONFIG_PATH = os.path.expanduser("~/.andart/config.json")
+SERVIDOR_HOST = "127.0.0.1"
+SERVIDOR_PUERTO = 8080
+SERVIDOR_URL = f"http://{SERVIDOR_HOST}:{SERVIDOR_PUERTO}"
 
 
 def _cargar_config():
@@ -33,11 +39,25 @@ def _ram_disponible_mb():
 
 
 class LLMEngine:
-    # Cadena rara e improbable que el modelo genere por sí solo. Se
-    # inserta en el prompt justo antes del turno del asistente y se usa
-    # como punto de corte confiable en generar(), sin depender de si el
-    # binario imprime o no los tokens de control del chat template.
-    _SENTINEL = "<<<ANDART_INICIO_RESPUESTA_9f3k>>>"
+    """
+    Motor de IA local. A diferencia de versiones anteriores (que lanzaban
+    llama-completion como proceso nuevo en CADA mensaje, recargando el
+    modelo entero desde disco cada vez), esta versión levanta UN SOLO
+    proceso persistente de llama-server al iniciar la app, con el modelo
+    ya cargado en RAM, y le habla por HTTP local en cada mensaje.
+
+    Esto es lo que de verdad soluciona los timeouts en hardware chico:
+    el costo de "cargar el modelo desde el disco" pasa a pagarse UNA vez
+    por sesión (al arrancar main.py o servidor.py), no una vez por
+    pregunta. En un celular de 2GB con almacenamiento lento, ese era el
+    cuello de botella real, más que la generación en sí.
+    """
+
+    # Red de seguridad barata: por si el modelo alguna vez imita algún
+    # patrón raro. Con llama-server ya casi no hace falta, porque el
+    # endpoint HTTP nunca devuelve eco del prompt (solo lo generado), pero
+    # no cuesta nada dejarlo.
+    _PATRON_RUIDO = re.compile(r"<<<[^<>]{0,80}>>>?")
 
     def __init__(self, model_path=None, formato_chat=None, ctx_size=None):
         config = _cargar_config()
@@ -50,30 +70,26 @@ class LLMEngine:
         if formato_chat is None:
             formato_chat = config.get("formato_chat", "chatml")
 
-        # Tamaño de contexto, tokens máximos a generar, y cuántos turnos
-        # previos de historial mandar: los tres se ajustan según la RAM
-        # del dispositivo (instalar.sh los calcula y los deja en
-        # config.json). En hardware chico, generar de más y arrastrar
-        # mucho historial es justo lo que provoca timeouts.
         if ctx_size is None:
             ctx_size = config.get("ctx_size", 2048)
 
         self.model_path = os.path.expanduser(model_path)
         self.formato_chat = formato_chat
         self.ctx_size = ctx_size
+        # n_predict e historial_turnos se ajustan según la RAM del
+        # dispositivo (instalar.sh los calcula y los deja en config.json).
         self.n_predict_default = config.get("n_predict", 500)
         self.historial_turnos = config.get("historial_turnos", 2)
 
-        # llama-completion es la herramienta correcta para "una pregunta,
-        # una respuesta, termina" (llama-cli en esta versión es para chat
-        # interactivo y no soporta bien -no-cnv, causaba cuelgues erráticos).
-        self.binario = os.path.expanduser("~/bin/llama-completion")
+        self.servidor_binario = os.path.expanduser("~/bin/llama-server")
+        self._proceso_servidor = None
 
-        if not os.path.isfile(self.binario):
+        if not os.path.isfile(self.servidor_binario):
             raise FileNotFoundError(
-                f"No se encuentra {self.binario}. "
-                "Corré: cp ~/llama.cpp/build/bin/llama-completion ~/bin/ "
-                "&& chmod +x ~/bin/llama-completion"
+                f"No se encuentra {self.servidor_binario}. "
+                "Corré: cp ~/llama.cpp/build/bin/llama-server ~/bin/ "
+                "&& chmod +x ~/bin/llama-server "
+                "(o volvé a correr instalar.sh, ya lo copia solo)."
             )
 
         if not os.path.isfile(self.model_path):
@@ -81,6 +97,71 @@ class LLMEngine:
                 f"No se encuentra el modelo en {self.model_path}. "
                 "Verifica la ruta o corré el instalador de nuevo."
             )
+
+        self._asegurar_servidor_corriendo()
+
+    # ---------- manejo del proceso persistente ----------
+
+    def _servidor_responde(self):
+        try:
+            r = requests.get(f"{SERVIDOR_URL}/health", timeout=2)
+            return r.status_code == 200
+        except requests.RequestException:
+            return False
+
+    def _asegurar_servidor_corriendo(self):
+        """Si ya hay un llama-server escuchando en el puerto (por ejemplo,
+        porque lo dejaste corriendo de una sesión anterior, o porque ya
+        lo levantó main.py y ahora abrís servidor.py), lo reutilizamos
+        sin recargar el modelo. Si no, lo levantamos nosotros."""
+        if self._servidor_responde():
+            print("[Andart] Reutilizando llama-server ya en ejecución (modelo ya cargado).")
+            return
+
+        print("[Andart] Cargando el modelo en memoria (una sola vez por sesión)...")
+        self._proceso_servidor = subprocess.Popen(
+            [
+                self.servidor_binario,
+                "-m", self.model_path,
+                "-c", str(self.ctx_size),
+                "--host", SERVIDOR_HOST,
+                "--port", str(SERVIDOR_PUERTO),
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            stdin=subprocess.DEVNULL,
+        )
+        atexit.register(self._detener_servidor)
+
+        # Cargar un modelo desde almacenamiento lento puede tardar bastante
+        # en hardware chico — esperamos hasta 2 minutos, chequeando cada
+        # segundo, en vez de tener un timeout corto que aborte de más.
+        for _ in range(120):
+            if self._servidor_responde():
+                print("[Andart] Modelo cargado y listo.")
+                return
+            if self._proceso_servidor.poll() is not None:
+                raise RuntimeError(
+                    "llama-server se cerró solo mientras cargaba el modelo. "
+                    "Probablemente no hay RAM suficiente para este modelo en "
+                    "este dispositivo — revisá el config.json (model_path) o "
+                    "corré instalar.sh de nuevo para bajar a un modelo más chico."
+                )
+            time.sleep(1)
+
+        raise RuntimeError(
+            "El servidor de inferencia (llama-server) no respondió después de "
+            "2 minutos esperando a que cargue el modelo."
+        )
+
+    def _detener_servidor(self):
+        if self._proceso_servidor is not None:
+            try:
+                self._proceso_servidor.terminate()
+            except Exception:
+                pass
+
+    # ---------- armado del prompt ----------
 
     def _formatear_turno(self, rol, contenido):
         """Da formato a un solo turno (system/user/assistant) según el
@@ -94,9 +175,9 @@ class LLMEngine:
     def armar_prompt_chat(self, pregunta, contexto_web=None, system_prompt=None, historial=None):
         """
         Arma el prompt completo: system + (opcional) turnos previos de la
-        conversación (para que el modelo tenga memoria dentro de la sesión)
-        + la pregunta actual, todo en el formato de chat correcto según el
-        modelo instalado (chatml para Qwen2.5-Coder).
+        conversación (para que el modelo tenga memoria dentro de la
+        sesión) + la pregunta actual, en el formato de chat correcto
+        (chatml para Qwen2.5-Coder).
 
         `historial`: lista opcional de tuplas [(pregunta1, respuesta1), ...]
         con turnos anteriores de la misma sesión.
@@ -150,28 +231,23 @@ class LLMEngine:
         else:
             partes.append("<|assistant|>\n")
 
-        # SENTINEL DE TEXTO PLANO: algunos binarios de llama.cpp (según
-        # cómo estén compilados/invocados) NO imprimen los tokens de
-        # control como <|im_start|>/<|im_end|> en su stdout, solo el
-        # texto de las palabras. Si dependemos de esos tokens para cortar
-        # el eco del prompt, rfind() puede no encontrarlos nunca y se
-        # termina mostrando el prompt entero (incluido el system prompt)
-        # en pantalla. Este sentinel es texto plano común y corriente:
-        # SIEMPRE se va a imprimir tal cual, sin importar la configuración
-        # del binario, así que cortar por acá es a prueba de eso.
-        partes.append(self._SENTINEL + "\n")
-
         return "".join(partes)
 
-    def _marca_apertura_assistant(self):
-        """Marca con tokens especiales, usada solo como fallback si por
-        algún motivo el sentinel de texto plano no aparece en la salida."""
-        if self.formato_chat == "chatml":
-            return "<|im_start|>assistant\n"
-        return "<|assistant|>\n"
+    # ---------- generación ----------
 
-    def generar(self, prompt, timeout=300, ctx_size=None, n_predict=None):
-        ctx_size = ctx_size or self.ctx_size
+    def generar(self, prompt, timeout=120, n_predict=None):
+        """
+        Genera la respuesta pidiéndosela al llama-server que ya está
+        corriendo con el modelo cargado. El endpoint /completion de
+        llama-server devuelve SOLO el texto nuevo generado, nunca un eco
+        del prompt — así que ya no hace falta ningún truco para "cortar"
+        el system prompt de la salida: estructuralmente no puede
+        aparecer en la respuesta.
+
+        El timeout por defecto baja de 300s a 120s porque, sin el costo
+        de recargar el modelo en cada llamada, 120s ya es holgado incluso
+        en hardware chico.
+        """
         n_predict = n_predict or self.n_predict_default
 
         ram_libre = _ram_disponible_mb()
@@ -181,92 +257,50 @@ class LLMEngine:
                 "Cerrá otras apps en segundo plano y probá de nuevo."
             )
 
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".txt", delete=False, encoding="utf-8"
-        ) as tmp:
-            tmp.write(prompt)
-            tmp_path = tmp.name
+        if not self._servidor_responde():
+            # Se cayó el servidor entre mensajes (poco común, pero puede
+            # pasar si el sistema mató el proceso por falta de memoria).
+            # Reintentamos levantarlo una vez antes de rendirnos.
+            try:
+                self._asegurar_servidor_corriendo()
+            except Exception as e:
+                return f"Error: el motor de IA no está disponible ({e})."
 
         try:
-            comando = [
-                self.binario,
-                "-m", self.model_path,
-                "-f", tmp_path,
-                "-c", str(ctx_size),
-                "-n", str(n_predict),
-                "--temp", "0.7",
-                "-no-cnv",
-            ]
+            r = requests.post(
+                f"{SERVIDOR_URL}/completion",
+                json={
+                    "prompt": prompt,
+                    "n_predict": n_predict,
+                    "temperature": 0.7,
+                    "cache_prompt": True,  # reutiliza el KV-cache del prefijo común entre turnos, más rápido
+                    "stop": ["<|im_end|>", "<|im_start|>", "</s>"],
+                },
+                timeout=timeout,
+            )
+            r.raise_for_status()
+            data = r.json()
+            respuesta = data.get("content", "")
+        except requests.Timeout:
+            return "Error: la generación tardó demasiado y fue cancelada (timeout)."
+        except requests.RequestException as e:
+            return f"Error al conectar con el motor de IA: {e}"
 
-            try:
-                proceso = subprocess.run(
-                    comando,
-                    capture_output=True,
-                    text=True,
-                    timeout=timeout,
-                    stdin=subprocess.DEVNULL,
-                )
-            except subprocess.TimeoutExpired:
-                return "Error: la generación tardó demasiado y fue cancelada (timeout)."
-            except Exception as e:
-                return f"Error inesperado al ejecutar el modelo: {e}"
+        respuesta = respuesta.strip()
 
-            if proceso.returncode != 0:
-                return f"Error al generar respuesta: {proceso.stderr.strip()}"
+        # Red de seguridad barata por si el modelo llegara a imitar algún
+        # patrón raro visto en el prompt (no debería pasar ya que el
+        # prompt ya no incluye ningún sentinel, pero no cuesta nada dejarlo).
+        respuesta = self._PATRON_RUIDO.sub("", respuesta).strip()
 
-            salida_cruda = proceso.stdout
+        if not respuesta:
+            return (
+                "[Andart no generó texto en esta respuesta. Puede deberse a "
+                "que se cortó muy pronto (n_predict bajo) o a un problema "
+                "puntual del modelo. Probá de nuevo o con una pregunta más corta.]"
+            )
 
-            # llama-completion devuelve el prompt completo (system + eco de
-            # todo lo anterior) SEGUIDO de lo que generó. Nos quedamos solo
-            # con lo que vino DESPUÉS del sentinel que pusimos justo antes
-            # de abrir el turno del asistente. Esto es lo que garantiza que
-            # el system prompt (con las instrucciones de Andart) NUNCA se
-            # imprima en pantalla, sin importar si el binario muestra o no
-            # los tokens especiales del chat template.
-            idx = salida_cruda.rfind(self._SENTINEL)
-            if idx != -1:
-                respuesta = salida_cruda[idx + len(self._SENTINEL):]
-            else:
-                # Fallback por si algún día cambia el binario y deja de
-                # imprimir incluso texto plano del prompt (no debería
-                # pasar, pero mejor no mostrar el prompt crudo nunca).
-                marca = self._marca_apertura_assistant()
-                idx2 = salida_cruda.rfind(marca)
-                respuesta = (
-                    salida_cruda[idx2 + len(marca):]
-                    if idx2 != -1
-                    else "[No se pudo aislar la respuesta del modelo. Revisá el formato de salida de llama-completion.]"
-                )
-
-            # Limpiar marcador de fin de generación y espacios sobrantes
-            respuesta = respuesta.replace("[end of text]", "").strip()
-
-            # Algunos modelos, al ver el sentinel de apertura en el
-            # prompt, imitan el patrón y generan su propia variante como
-            # "cierre" al final de la respuesta (ej: algo parecido a
-            # '<<<ANDART_FIN_...>>>'). Lo recortamos si aparece, sea cual
-            # sea la variante exacta que el modelo haya inventado.
-            respuesta = re.sub(r"<<<[^<>]{0,80}>>>?", "", respuesta).strip()
-
-            # Si después de toda la limpieza no quedó nada, no devolvemos
-            # una burbuja vacía en la interfaz — avisamos qué pasó, para
-            # poder diagnosticarlo (modelo cortado muy corto, n_predict
-            # insuficiente, etc.) en vez de que parezca que Andart no
-            # contestó nada sin explicación.
-            if not respuesta:
-                return (
-                    "[Andart no generó texto en esta respuesta. Puede deberse a "
-                    "que se cortó muy pronto (n_predict bajo) o a un problema de "
-                    "formato en la salida del modelo. Probá de nuevo o con una "
-                    "pregunta más corta.]"
-                )
-
-            return respuesta
-        finally:
-            try:
-                os.remove(tmp_path)
-            except OSError:
-                pass
+        return respuesta
 
     def responder(self, pregunta, contexto_web=None, system_prompt=None, historial=None, **kwargs):
         """
