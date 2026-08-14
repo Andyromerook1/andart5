@@ -32,6 +32,12 @@ def _ram_disponible_mb():
 
 
 class LLMEngine:
+    # Cadena rara e improbable que el modelo genere por sí solo. Se
+    # inserta en el prompt justo antes del turno del asistente y se usa
+    # como punto de corte confiable en generar(), sin depender de si el
+    # binario imprime o no los tokens de control del chat template.
+    _SENTINEL = "<<<ANDART_INICIO_RESPUESTA_9f3k>>>"
+
     def __init__(self, model_path=None, formato_chat=None, ctx_size=None):
         config = _cargar_config()
 
@@ -129,15 +135,22 @@ class LLMEngine:
         else:
             partes.append("<|assistant|>\n")
 
+        # SENTINEL DE TEXTO PLANO: algunos binarios de llama.cpp (según
+        # cómo estén compilados/invocados) NO imprimen los tokens de
+        # control como <|im_start|>/<|im_end|> en su stdout, solo el
+        # texto de las palabras. Si dependemos de esos tokens para cortar
+        # el eco del prompt, rfind() puede no encontrarlos nunca y se
+        # termina mostrando el prompt entero (incluido el system prompt)
+        # en pantalla. Este sentinel es texto plano común y corriente:
+        # SIEMPRE se va a imprimir tal cual, sin importar la configuración
+        # del binario, así que cortar por acá es a prueba de eso.
+        partes.append(self._SENTINEL + "\n")
+
         return "".join(partes)
 
     def _marca_apertura_assistant(self):
-        """La marca exacta con la que abrimos el turno del asistente al
-        armar el prompt. Nos sirve para cortar el eco del prompt que
-        llama-completion mete en su propio stdout, de forma que el
-        system prompt y el resto del historial NUNCA lleguen a mostrarse
-        en pantalla: solo se devuelve lo que el modelo generó después de
-        esa marca."""
+        """Marca con tokens especiales, usada solo como fallback si por
+        algún motivo el sentinel de texto plano no aparece en la salida."""
         if self.formato_chat == "chatml":
             return "<|im_start|>assistant\n"
         return "<|assistant|>\n"
@@ -189,16 +202,25 @@ class LLMEngine:
 
             # llama-completion devuelve el prompt completo (system + eco de
             # todo lo anterior) SEGUIDO de lo que generó. Nos quedamos solo
-            # con lo que vino DESPUÉS de la última marca de "assistant",
-            # que es la respuesta nueva real. Esto es lo que garantiza que
-            # el system prompt (con las instrucciones de Andart) nunca se
-            # imprima en pantalla: solo se devuelve la respuesta.
-            marca = self._marca_apertura_assistant()
-            idx = salida_cruda.rfind(marca)
+            # con lo que vino DESPUÉS del sentinel que pusimos justo antes
+            # de abrir el turno del asistente. Esto es lo que garantiza que
+            # el system prompt (con las instrucciones de Andart) NUNCA se
+            # imprima en pantalla, sin importar si el binario muestra o no
+            # los tokens especiales del chat template.
+            idx = salida_cruda.rfind(self._SENTINEL)
             if idx != -1:
-                respuesta = salida_cruda[idx + len(marca):]
+                respuesta = salida_cruda[idx + len(self._SENTINEL):]
             else:
-                respuesta = salida_cruda
+                # Fallback por si algún día cambia el binario y deja de
+                # imprimir incluso texto plano del prompt (no debería
+                # pasar, pero mejor no mostrar el prompt crudo nunca).
+                marca = self._marca_apertura_assistant()
+                idx2 = salida_cruda.rfind(marca)
+                respuesta = (
+                    salida_cruda[idx2 + len(marca):]
+                    if idx2 != -1
+                    else "[No se pudo aislar la respuesta del modelo. Revisá el formato de salida de llama-completion.]"
+                )
 
             # Limpiar marcador de fin de generación y espacios sobrantes
             respuesta = respuesta.replace("[end of text]", "").strip()
