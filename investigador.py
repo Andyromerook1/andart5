@@ -21,6 +21,14 @@ PATRONES_RUIDO = [
     "descarga la app", "descarga nuestra app",
 ]
 
+# Presupuesto de caracteres para el resultado final que se le manda al
+# modelo. Antes cerebro.py cortaba a lo bruto con contenido_web[:1500],
+# arriesgándose a cortar a mitad de un bloque de código o una oración.
+# Ahora el propio investigador arma el resultado respetando este límite
+# desde el vamos, priorizando código (más valioso para bug bounty) sobre
+# texto explicativo.
+PRESUPUESTO_CARACTERES = 1400
+
 
 class Investigador:
     def __init__(self, profundidad=2):
@@ -28,7 +36,7 @@ class Investigador:
         self.api = APIConnector()
 
     def investigar(self, consulta_original):
-        print("[*] Iniciando investigación profunda (modo híbrido)...")
+        print("[*] Iniciando investigación (modo híbrido)...")
 
         # --- Intentar API primero ---
         respuesta_api = None
@@ -40,54 +48,79 @@ class Investigador:
         except Exception as e:
             print(f"[!] Error al intentar API: {e}")
 
-        # Fase 1: Generar subconsultas
+        # Fase 1: Generar subconsultas.
+        # Antes generaba 5 variantes con sufijos de tutorial genérico
+        # ("para principiantes", "paso a paso"...), pensados para un bot
+        # de aprendizaje general, no para bug bounty. Ahora son solo 2:
+        # la consulta tal cual, más UNA variante orientada a
+        # vulnerabilidades/seguridad técnica. Menos variantes = menos
+        # búsquedas = mucho menos tiempo de red, que es el cuello de
+        # botella real en un celular con datos móviles inestables.
         subconsultas = self._generar_subconsultas(consulta_original)
 
-        # Fase 2: Búsqueda multicanal y recolección de URLs
+        # Fase 2: Búsqueda multicanal y recolección de URLs.
+        # Antes: por cada subconsulta se hacían 1 búsqueda general + 4
+        # sitios específicos (github/stackoverflow/pastebin/reddit) = 5
+        # requests. Con 5 subconsultas eran hasta 25 llamadas de red
+        # solo acá. Ahora: solo la PRIMERA subconsulta (la pregunta
+        # original) busca también en sitios técnicos; las demás
+        # subconsultas solo hacen la búsqueda general. Esto baja el
+        # total a ~7 llamadas en el peor caso.
         urls_totales = set()
-        for subq in subconsultas:
+        for i, subq in enumerate(subconsultas):
             res = buscar_multicanal(subq, max_results=3)
             for r in res:
                 if r.get("href"):
                     urls_totales.add(r["href"])
-            for sitio in ["github.com", "stackoverflow.com", "pastebin.com", "reddit.com"]:
-                res_sitio = buscar_multicanal(subq, max_results=2, sitio=sitio)
-                for r in res_sitio:
-                    if r.get("href"):
-                        urls_totales.add(r["href"])
 
-        # Fase 3: Scraping de primer nivel (ahora recolectamos bloques)
+            if i == 0:
+                # Solo para la consulta original, no para cada variante.
+                for sitio in ["github.com", "stackoverflow.com"]:
+                    res_sitio = buscar_multicanal(subq, max_results=2, sitio=sitio)
+                    for r in res_sitio:
+                        if r.get("href"):
+                            urls_totales.add(r["href"])
+
+        # Fase 3: Scraping de primer nivel.
+        # Antes: hasta 10 páginas. Ahora: 5 — sigue siendo variedad
+        # suficiente para armar una buena respuesta, con la mitad del
+        # tiempo de red.
         todos_los_bloques = []
         enlaces_segundo_nivel = set()
-        for url in list(urls_totales)[:10]:
+        for url in list(urls_totales)[:5]:
             bloques, enlaces = extraer_contenido_y_enlaces(url, profundizar=(self.profundidad > 1))
             if bloques:
                 todos_los_bloques.extend(bloques)
             if enlaces:
                 enlaces_segundo_nivel.update(enlaces)
 
-        # Fase 4: Scraping de segundo nivel si profundidad > 1
+        # Fase 4: Scraping de segundo nivel si profundidad > 1.
+        # Antes: hasta 5 páginas más. Ahora: 2. El segundo nivel es
+        # "nice to have", no vale la pena pagar tanto tiempo de red por
+        # una mejora marginal en la respuesta.
         if self.profundidad > 1 and enlaces_segundo_nivel:
             print("[*] Explorando enlaces relacionados...")
-            for url in list(enlaces_segundo_nivel)[:5]:
+            for url in list(enlaces_segundo_nivel)[:2]:
                 bloques, _ = extraer_contenido_y_enlaces(url, profundizar=False)
                 if bloques:
                     todos_los_bloques.extend(bloques)
 
-        # Fase 5: Ensamblar código + síntesis de texto
+        # Fase 5: Ensamblar código + síntesis de texto, respetando el
+        # presupuesto de caracteres desde acá (no lo corta cerebro.py
+        # después a lo bruto).
         resultado_final = self._ensamblar_codigo(todos_los_bloques, consulta_original)
 
         if respuesta_api:
-            return respuesta_api + resultado_final
-        else:
-            return resultado_final
+            resultado_final = respuesta_api + resultado_final
+
+        return resultado_final[:PRESUPUESTO_CARACTERES]
 
     def _generar_subconsultas(self, consulta):
-        variantes = [consulta]
-        sufijos = ["tutorial", "guía completa", "para principiantes", "paso a paso", "ejemplos prácticos", "explicación básica"]
-        for sufijo in sufijos:
-            variantes.append(f"{consulta} {sufijo}")
-        return variantes[:5]
+        """Dos variantes en vez de seis: la consulta tal cual, y una
+        orientada a contexto técnico/de seguridad. Menos volumen de red,
+        más relevancia para el caso de uso real (bug bounty), en vez de
+        sufijos de tutorial genérico que no aportan acá."""
+        return [consulta, f"{consulta} vulnerabilidad seguridad técnico"]
 
     def _es_ruido(self, texto):
         """Detecta si un fragmento es contenido promocional, legal o de
@@ -134,8 +167,11 @@ class Investigador:
                     codigo_completo = "\n\n".join(unicos_limpios)
                     resultado += f"\n\n[💻 CÓDIGO {lang.upper()} COMPLETO]\n{codigo_completo}\n"
 
-        # Procesar textos para la explicación
-        if fragmentos_texto:
+        # Procesar textos para la explicación, solo si todavía queda
+        # margen dentro del presupuesto de caracteres (el código va
+        # primero porque es lo más valioso para bug bounty).
+        margen_restante = PRESUPUESTO_CARACTERES - len(resultado)
+        if fragmentos_texto and margen_restante > 100:
             texto_completo = "\n".join(fragmentos_texto)
             explicacion = self._sintetizar_texto(texto_completo, consulta_original)
             if explicacion:
@@ -243,7 +279,17 @@ class Investigador:
             puntuadas.append((score, oracion))
 
         puntuadas.sort(reverse=True, key=lambda x: x[0])
-        mejores = [orac for score, orac in puntuadas[:15]]
+        # Antes tomaba las 15 mejores oraciones sin importar el largo
+        # total. Ahora corta apenas se acerca al presupuesto de
+        # caracteres, para no generar un bloque de texto larguísimo que
+        # después haya que truncar a lo bruto.
+        mejores = []
+        largo_acumulado = 0
+        for score, oracion in puntuadas:
+            if largo_acumulado + len(oracion) > 900:
+                break
+            mejores.append(oracion)
+            largo_acumulado += len(oracion)
 
         if not mejores:
             # Si el filtro estricto no dejó nada, mejor no mandar ruido:
