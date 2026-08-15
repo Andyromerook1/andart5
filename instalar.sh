@@ -122,9 +122,9 @@ if [ "$RAM_MB" -le 2200 ]; then
     MODEL_FILE="Qwen2.5-Coder-1.5B-Instruct-abliterated-Q4_K_M.gguf"
     MODEL_FORMATO="chatml"
     CTX_SIZE=2048
-    N_PREDICT=350
+    N_PREDICT=180
     HISTORIAL_TURNOS=1
-    echo "📦 Perfil detectado: RAM baja (~${RAM_MB}MB) → Qwen2.5-Coder-1.5B, ctx=2048, n_predict=350, historial=1 turno"
+    echo "📦 Perfil detectado: RAM baja (~${RAM_MB}MB) → Qwen2.5-Coder-1.5B, ctx=2048, n_predict=180, historial=1 turno"
 elif [ "$RAM_MB" -le 3500 ]; then
     MODEL_URL="https://huggingface.co/bartowski/Qwen2.5-Coder-1.5B-Instruct-abliterated-GGUF/resolve/main/Qwen2.5-Coder-1.5B-Instruct-abliterated-Q4_K_M.gguf"
     MODEL_FILE="Qwen2.5-Coder-1.5B-Instruct-abliterated-Q4_K_M.gguf"
