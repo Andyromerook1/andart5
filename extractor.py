@@ -1,17 +1,24 @@
-# extractor.py
 import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin
 
-# Lista de patrones basura que descartar
+# Lista de patrones basura que descartar.
+# NOTA: sacamos "menu" y "header" de acá — son palabras comunes en
+# contenido de seguridad legítimo (HTTP header, Authorization header,
+# menú de configuración, etc.) y estaban tirando a la basura justo el
+# tipo de contenido técnico que más nos interesa. La limpieza real de
+# navegación/menús de la página ya la hace el paso de arriba, que borra
+# <nav>, <footer>, <aside> y elementos con esas clases CSS — no hace
+# falta duplicarlo revisando el texto en sí.
 PATRONES_BASURA = [
     "cookie", "subscribe", "click here", "sign up", "log in",
     "all rights reserved", "privacy policy", "terms of service",
     "please enable javascript", "you need to enable",
     "©", "©️", "{{", "}}", "function(", "javascript:",
     "omcat", "findstr", "C:\\Program Files",  # Scripts rotos
-    "menu", "sidebar", "widget", "footer", "header",
+    "sidebar", "widget",
 ]
+
 
 def extraer_contenido_y_enlaces(url, profundizar=False):
     """
@@ -27,14 +34,11 @@ def extraer_contenido_y_enlaces(url, profundizar=False):
         soup = BeautifulSoup(resp.text, "html.parser")
         for tag in soup(["script", "style", "nav", "footer", "aside"]):
             tag.decompose()
-
         # Eliminar elementos con clases típicas de menús o barras
         for cls in ["menu", "sidebar", "widget", "footer", "header", "cookie"]:
             for tag in soup.find_all(class_=lambda x: x and cls in x.lower() if x else False):
                 tag.decompose()
-
         bloques = []
-
         # Extraer bloques de código
         codigos = soup.find_all(["pre", "code", "textarea"])
         for bloque in codigos[:5]:
@@ -54,7 +58,6 @@ def extraer_contenido_y_enlaces(url, profundizar=False):
                     "lenguaje": lang,
                     "contenido": codigo
                 })
-
         # Extraer texto relevante
         textos = soup.find_all(["p", "h1", "h2", "h3", "li"])
         for elem in textos[:30]:
@@ -70,7 +73,6 @@ def extraer_contenido_y_enlaces(url, profundizar=False):
                     "tipo": "texto",
                     "contenido": txt
                 })
-
         # Si no se extrajo nada, agregar el texto completo como respaldo
         if not bloques:
             texto_completo = soup.get_text()[:2000]
@@ -81,7 +83,6 @@ def extraer_contenido_y_enlaces(url, profundizar=False):
                         "tipo": "texto",
                         "contenido": texto_completo
                     })
-
         # Recolectar enlaces internos útiles
         enlaces = []
         if profundizar:
@@ -91,8 +92,6 @@ def extraer_contenido_y_enlaces(url, profundizar=False):
                 if any(palabra in texto_enlace for palabra in ["tutorial", "ejemplo", "guía", "código", "script", "paso", "receta", "hack"]):
                     full_url = urljoin(url, href)
                     enlaces.append(full_url)
-
         return bloques, enlaces[:5]
-
     except Exception as e:
         return [{"tipo": "texto", "contenido": f"[-] Error: {e}"}], []
