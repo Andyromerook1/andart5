@@ -10,22 +10,35 @@ const pensando = document.getElementById("pensando");
 const estadoConexion = document.getElementById("estado-conexion");
 const textoEstado = document.getElementById("texto-estado");
 const botonNuevoChat = document.getElementById("boton-nuevo-chat");
+const botonHistorial = document.getElementById("boton-historial");
+const panelChats = document.getElementById("panel-chats");
+const panelFondo = document.getElementById("panel-fondo");
+const botonCerrarPanel = document.getElementById("boton-cerrar-panel");
+const listaChats = document.getElementById("lista-chats");
 
 let enviando = false;
+let chatActualId = null;
 
 // ---------- nuevo chat ----------
 
 botonNuevoChat.addEventListener("click", async () => {
   if (enviando) return;
-  if (chat.children.length > 1 && !confirm("¿Empezar un chat nuevo? Se borra la conversación actual.")) {
+  if (chat.children.length > 1 && !confirm("¿Empezar un chat nuevo? El actual queda guardado y lo podés retomar desde el historial.")) {
     return;
   }
   try {
-    await fetch("/api/nuevo_chat", { method: "POST" });
+    const r = await fetch("/api/nuevo_chat", { method: "POST" });
+    const data = await r.json();
+    chatActualId = data.chat_id || null;
   } catch (e) {
     // Si falla la llamada igual limpiamos la pantalla; el peor caso es
     // que el backend conserve un historial viejo una request más.
   }
+  mostrarPantallaVacia();
+  campo.focus();
+});
+
+function mostrarPantallaVacia() {
   chat.innerHTML = "";
   const el = document.createElement("div");
   el.className = "mensaje mensaje-sistema";
@@ -33,8 +46,144 @@ botonNuevoChat.addEventListener("click", async () => {
   p.textContent = "Chat nuevo. Escribí algo para empezar.";
   el.appendChild(p);
   chat.appendChild(el);
-  campo.focus();
-});
+}
+
+// ---------- panel de chats guardados ----------
+
+function abrirPanel() {
+  panelChats.hidden = false;
+  panelFondo.hidden = false;
+  cargarListaChats();
+}
+
+function cerrarPanel() {
+  panelChats.hidden = true;
+  panelFondo.hidden = true;
+}
+
+botonHistorial.addEventListener("click", abrirPanel);
+botonCerrarPanel.addEventListener("click", cerrarPanel);
+panelFondo.addEventListener("click", cerrarPanel);
+
+function formatearFecha(timestampSegundos) {
+  if (!timestampSegundos) return "";
+  const fecha = new Date(timestampSegundos * 1000);
+  const hoy = new Date();
+  const esHoy = fecha.toDateString() === hoy.toDateString();
+  if (esHoy) {
+    return fecha.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" });
+  }
+  return fecha.toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit" });
+}
+
+async function cargarListaChats() {
+  listaChats.innerHTML = '<li class="lista-chats-vacio">Cargando...</li>';
+  try {
+    const r = await fetch("/api/chats");
+    const data = await r.json();
+    chatActualId = data.chat_actual;
+    pintarListaChats(data.chats || []);
+  } catch (e) {
+    listaChats.innerHTML = '<li class="lista-chats-vacio">No se pudo cargar el historial.</li>';
+  }
+}
+
+function pintarListaChats(listaDeChats) {
+  listaChats.innerHTML = "";
+
+  if (listaDeChats.length === 0) {
+    listaChats.innerHTML = '<li class="lista-chats-vacio">Todavía no hay chats guardados.</li>';
+    return;
+  }
+
+  listaDeChats.forEach((c) => {
+    const li = document.createElement("li");
+    li.className = "item-chat" + (c.id === chatActualId ? " activo" : "");
+
+    const info = document.createElement("div");
+    info.className = "item-chat-info";
+
+    const titulo = document.createElement("div");
+    titulo.className = "item-chat-titulo";
+    titulo.textContent = c.titulo;
+
+    const fecha = document.createElement("div");
+    fecha.className = "item-chat-fecha";
+    fecha.textContent = formatearFecha(c.actualizado) + " · " + c.mensajes + " mensajes";
+
+    info.appendChild(titulo);
+    info.appendChild(fecha);
+
+    const botonBorrar = document.createElement("button");
+    botonBorrar.className = "item-chat-borrar";
+    botonBorrar.type = "button";
+    botonBorrar.setAttribute("aria-label", "Borrar chat");
+    botonBorrar.innerHTML =
+      '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>';
+    botonBorrar.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      borrarChat(c.id);
+    });
+
+    li.appendChild(info);
+    li.appendChild(botonBorrar);
+    li.addEventListener("click", () => cargarChat(c.id));
+
+    listaChats.appendChild(li);
+  });
+}
+
+async function cargarChat(id) {
+  try {
+    const r = await fetch(`/api/chats/${id}`);
+    const data = await r.json();
+    if (!r.ok || data.error) {
+      alert(data.error || "No se pudo abrir ese chat.");
+      return;
+    }
+    chatActualId = id;
+    pintarHistorialCompleto(data.historial || []);
+    cerrarPanel();
+  } catch (e) {
+    alert("No se pudo conectar con el servidor.");
+  }
+}
+
+function pintarHistorialCompleto(historial) {
+  chat.innerHTML = "";
+  historial.forEach((entrada) => {
+    if (entrada.usuario) {
+      const el = document.createElement("div");
+      el.className = "mensaje mensaje-usuario";
+      const p = document.createElement("p");
+      p.textContent = entrada.usuario;
+      el.appendChild(p);
+      agregarBotonCopiarMensaje(el, entrada.usuario);
+      chat.appendChild(el);
+    } else if (entrada.andart) {
+      const el = document.createElement("div");
+      el.className = "mensaje mensaje-ia";
+      renderizarMensajeIA(el, entrada.andart);
+      agregarBotonCopiarMensaje(el, entrada.andart);
+      chat.appendChild(el);
+    }
+  });
+  desplazarAbajo();
+}
+
+async function borrarChat(id) {
+  if (!confirm("¿Borrar este chat? No se puede deshacer.")) return;
+  try {
+    await fetch(`/api/chats/${id}`, { method: "DELETE" });
+    if (id === chatActualId) {
+      chatActualId = null;
+      mostrarPantallaVacia();
+    }
+    cargarListaChats();
+  } catch (e) {
+    alert("No se pudo borrar el chat.");
+  }
+}
 
 // ---------- estado de conexión ----------
 
