@@ -144,6 +144,15 @@ body {
   animation: panel-entrada 0.22s ease-out;
 }
 
+/* El display:flex de arriba, sin esto, le gana al atributo HTML
+   "hidden" (que por defecto solo pone display:none) — por eso el
+   panel aparecía solo al cargar la página y no se podía cerrar.
+   Esta regla se asegura de que [hidden] siempre gane. */
+.panel-chats[hidden],
+.panel-fondo[hidden] {
+  display: none !important;
+}
+
 @keyframes panel-entrada {
   from { transform: translateX(-100%); }
   to { transform: translateX(0); }
