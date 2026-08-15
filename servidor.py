@@ -16,13 +16,19 @@ import os
 from flask import Flask, request, jsonify, send_from_directory
 
 from cerebro import CerebroAndart
+import chats
 
 app = Flask(__name__, static_folder="static", static_url_path="")
 
 # Una sola instancia global: así el modelo se carga una vez y todos los
-# mensajes de la sesión web comparten el mismo historial, igual que en
-# la consola (main.py también crea un único CerebroAndart por sesión).
+# chats de la sesión web comparten el mismo modelo cargado (cambiar de
+# chat NO recarga el modelo — solo cambia qué historial de texto se le
+# manda, que es liviano).
 cerebro = CerebroAndart()
+
+# ID del chat actualmente activo. Empieza como uno nuevo sin guardar
+# todavía (recién se persiste a disco cuando tiene al menos un mensaje).
+chat_actual_id = chats.nuevo_id()
 
 
 @app.route("/")
@@ -40,6 +46,9 @@ def mensaje():
 
     try:
         _tipo, explicacion, salida = cerebro.procesar(texto)
+        # Guardamos en disco después de cada intercambio, así nunca se
+        # pierde una conversación aunque cierres la app sin querer.
+        chats.guardar_chat(chat_actual_id, cerebro.historial)
         return jsonify({"respuesta": salida, "estado": explicacion})
     except Exception as e:
         # No dejamos que un error interno tumbe el server; el frontend
@@ -57,11 +66,45 @@ def salud():
 
 @app.route("/api/nuevo_chat", methods=["POST"])
 def nuevo_chat():
-    """Vacía el historial de la conversación actual. No recarga el
-    modelo (eso sería lento y no hace falta) — solo limpia la lista de
-    turnos previos, lo que además hace que las próximas respuestas sean
-    más rápidas al no tener que reprocesar tanto contexto."""
+    """Empieza un chat nuevo. El chat anterior YA está guardado en disco
+    (se guarda solo después de cada mensaje), así que acá solo hace
+    falta vaciar el historial en memoria y asignar un id nuevo — no se
+    pierde nada de lo anterior, sigue disponible en /api/chats."""
+    global chat_actual_id
     cerebro.historial = []
+    chat_actual_id = chats.nuevo_id()
+    return jsonify({"ok": True, "chat_id": chat_actual_id})
+
+
+@app.route("/api/chats", methods=["GET"])
+def listar_chats():
+    return jsonify({"chats": chats.listar_chats(), "chat_actual": chat_actual_id})
+
+
+@app.route("/api/chats/<chat_id>", methods=["GET"])
+def cargar_chat(chat_id):
+    """Carga un chat guardado como el activo. El modelo NO se recarga
+    (sigue siendo la misma instancia cargada) — solo cambia qué
+    historial de texto usamos de acá en adelante."""
+    global chat_actual_id
+    data = chats.cargar_chat(chat_id)
+    if data is None:
+        return jsonify({"error": "Ese chat no existe."}), 404
+
+    cerebro.historial = data["historial"]
+    chat_actual_id = chat_id
+    return jsonify({"ok": True, "historial": cerebro.historial})
+
+
+@app.route("/api/chats/<chat_id>", methods=["DELETE"])
+def eliminar_chat(chat_id):
+    global chat_actual_id
+    chats.borrar_chat(chat_id)
+    if chat_id == chat_actual_id:
+        # Si borraste el chat que tenías abierto, arrancamos uno nuevo
+        # para no quedar apuntando a un archivo que ya no existe.
+        cerebro.historial = []
+        chat_actual_id = chats.nuevo_id()
     return jsonify({"ok": True})
 
 
