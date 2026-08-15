@@ -78,13 +78,18 @@ function formatearFecha(timestampSegundos) {
 
 async function cargarListaChats() {
   listaChats.innerHTML = '<li class="lista-chats-vacio">Cargando...</li>';
+  const controlador = new AbortController();
+  const aviso = setTimeout(() => controlador.abort(), 8000);
   try {
-    const r = await fetch("/api/chats");
+    const r = await fetch("/api/chats", { signal: controlador.signal });
     const data = await r.json();
     chatActualId = data.chat_actual;
     pintarListaChats(data.chats || []);
   } catch (e) {
-    listaChats.innerHTML = '<li class="lista-chats-vacio">No se pudo cargar el historial.</li>';
+    listaChats.innerHTML =
+      '<li class="lista-chats-vacio">No se pudo cargar (¿Andart está generando una respuesta? probá cerrar y abrir de nuevo en un rato).</li>';
+  } finally {
+    clearTimeout(aviso);
   }
 }
 
