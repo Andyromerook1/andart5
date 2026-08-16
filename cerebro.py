@@ -1,6 +1,13 @@
 # cerebro.py
 from investigador import Investigador
 from llm_engine import LLMEngine
+from herramientas import ejecutar as ejecutar_herramienta
+import re
+
+# Formato exacto que le enseñamos al modelo en el system prompt para
+# pedir que se ejecute una herramienta real: una línea "!herramienta
+# nombre argumentos", nada más en esa respuesta.
+_PATRON_TOOL_CALL = re.compile(r"^!herramienta\s+(\S+)\s+(.+)$", re.IGNORECASE | re.DOTALL)
 class CerebroAndart:
     def __init__(self):
         self.historial = []  # lista de dicts {"usuario": ..., "andart": ...}
@@ -71,5 +78,41 @@ class CerebroAndart:
                 contexto_web=None,
                 historial=historial_para_llm,
             )
+
+        # ¿El modelo pidió ejecutar una herramienta real (ej: nmap)?
+        # Si respondió con el formato exacto que le enseñamos en el
+        # system prompt, la corremos de verdad (con los controles de
+        # scope.txt de herramientas.py) y le devolvemos el resultado
+        # para que arme la respuesta final en base a datos reales, en
+        # vez de mostrarte crudo el comando que "quería" correr.
+        match_tool = _PATRON_TOOL_CALL.match(salida_final.strip())
+        if match_tool:
+            nombre_herramienta = match_tool.group(1).lower()
+            argumentos = match_tool.group(2).strip()
+            explicacion = f"Ejecutando {nombre_herramienta}..."
+
+            ok, resultado_herramienta = ejecutar_herramienta(nombre_herramienta, argumentos)
+            if ok:
+                contexto_resultado = (
+                    f"Resultado de ejecutar {nombre_herramienta} {argumentos}:\n"
+                    f"{resultado_herramienta}"
+                )
+            else:
+                # El rechazo (ej: objetivo fuera de scope.txt) también se
+                # lo pasamos al modelo como contexto, para que te lo
+                # explique en lenguaje natural en vez de solo fallar.
+                contexto_resultado = (
+                    f"No se pudo ejecutar {nombre_herramienta} {argumentos}: "
+                    f"{resultado_herramienta}"
+                )
+
+            # Segunda pasada: le pedimos al modelo que interprete el
+            # resultado real, en vez de devolverte el tool-call crudo.
+            salida_final = self.llm.responder(
+                pregunta=consulta_real,
+                contexto_web=contexto_resultado,
+                historial=historial_para_llm,
+            )
+
         self.historial.append({"andart": salida_final})
         return "ia_respuesta", explicacion, salida_final
