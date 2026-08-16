@@ -31,8 +31,11 @@ PATRONES_RUIDO = [
 PRESUPUESTO_CARACTERES = 1400
 
 # Sitios técnicos que priorizamos en la búsqueda para consultas de
-# seguridad — mucho mejor señal que una búsqueda genérica.
-SITIOS_SEGURIDAD = ["github.com", "hacktricks.xyz", "portswigger.net"]
+# seguridad. hackerone.com primero: son reportes de vulnerabilidades ya
+# DIVULGADOS PÚBLICAMENTE por HackerOne — la señal más directa que
+# existe de "esto funcionó de verdad, en un programa real, hace poco".
+# Mucho más valioso para encontrar algo nuevo que un payload de manual.
+SITIOS_SEGURIDAD = ["hackerone.com", "github.com", "hacktricks.xyz", "portswigger.net"]
 
 # Atajo directo a PayloadsAllTheThings (swisskyrepo/PayloadsAllTheThings
 # en GitHub): un repo con payloads reales ya organizados por tipo de
@@ -141,7 +144,7 @@ class Investigador:
         # total a ~7 llamadas en el peor caso.
         urls_totales = set()
         for i, subq in enumerate(subconsultas):
-            res = buscar_multicanal(subq, max_results=3)
+            res = buscar_multicanal(subq, max_results=3, periodo="y")
             for r in res:
                 if r.get("href"):
                     urls_totales.add(r["href"])
@@ -149,7 +152,7 @@ class Investigador:
             if i == 0:
                 # Solo para la consulta original, no para cada variante.
                 for sitio in SITIOS_SEGURIDAD:
-                    res_sitio = buscar_multicanal(subq, max_results=2, sitio=sitio)
+                    res_sitio = buscar_multicanal(subq, max_results=2, sitio=sitio, periodo="y")
                     for r in res_sitio:
                         if r.get("href"):
                             urls_totales.add(r["href"])
