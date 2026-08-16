@@ -4,6 +4,7 @@ from extractor import extraer_contenido_y_enlaces
 from api_connector import APIConnector
 from collections import Counter
 import re
+import requests
 
 # Frases/patrones típicos de ruido publicitario, legal o de redes sociales
 # que no aportan nada a una respuesta técnica y suelen colarse en el scraping.
@@ -29,14 +30,86 @@ PATRONES_RUIDO = [
 # texto explicativo.
 PRESUPUESTO_CARACTERES = 1400
 
+# Sitios técnicos que priorizamos en la búsqueda para consultas de
+# seguridad — mucho mejor señal que una búsqueda genérica.
+SITIOS_SEGURIDAD = ["github.com", "hacktricks.xyz", "portswigger.net"]
+
+# Atajo directo a PayloadsAllTheThings (swisskyrepo/PayloadsAllTheThings
+# en GitHub): un repo con payloads reales ya organizados por tipo de
+# vulnerabilidad, mantenido por la comunidad de seguridad ofensiva. Si
+# la consulta menciona alguno de estos tipos, bajamos el archivo
+# directo en vez de pasar por todo el pipeline de búsqueda+scraping —
+# más rápido (una sola descarga) y con contenido mucho más confiable.
+BASE_PAYLOADS = "https://raw.githubusercontent.com/swisskyrepo/PayloadsAllTheThings/master"
+MAPA_PAYLOADS = {
+    "xss": "XSS Injection",
+    "cross site scripting": "XSS Injection",
+    "sqli": "SQL Injection",
+    "sql injection": "SQL Injection",
+    "inyeccion sql": "SQL Injection",
+    "inyección sql": "SQL Injection",
+    "ssrf": "Server Side Request Forgery",
+    "lfi": "File Inclusion",
+    "file inclusion": "File Inclusion",
+    "rce": "Command Injection",
+    "command injection": "Command Injection",
+    "csrf": "CSRF Injection",
+    "xxe": "XXE Injection",
+    "idor": "Insecure Direct Object References",
+    "ssti": "Server Side Template Injection",
+    "open redirect": "Open Redirect",
+    "redireccion abierta": "Open Redirect",
+    "path traversal": "Directory Traversal",
+    "directory traversal": "Directory Traversal",
+}
+
 
 class Investigador:
     def __init__(self, profundidad=2):
         self.profundidad = profundidad
         self.api = APIConnector()
 
+    def _intentar_payloads_conocidos(self, consulta):
+        """Si la consulta menciona un tipo de vulnerabilidad conocido
+        (XSS, SQLi, SSRF, etc.), baja directo el archivo correspondiente
+        de PayloadsAllTheThings. Devuelve None si no hay match o si
+        falla la descarga (en ese caso, investigar() sigue con el
+        pipeline normal de búsqueda como respaldo)."""
+        low = consulta.lower()
+        carpeta = None
+        for palabra_clave, nombre_carpeta in MAPA_PAYLOADS.items():
+            if palabra_clave in low:
+                carpeta = nombre_carpeta
+                break
+
+        if carpeta is None:
+            return None
+
+        url = f"{BASE_PAYLOADS}/{carpeta}/README.md"
+        try:
+            resp = requests.get(url, timeout=6)
+            if resp.status_code != 200 or not resp.text.strip():
+                return None
+            contenido = resp.text.strip()
+            return (
+                f"[💻 PAYLOADS: {carpeta.upper()} — fuente: PayloadsAllTheThings]\n"
+                f"{contenido}"
+            )
+        except requests.RequestException:
+            return None
+
     def investigar(self, consulta_original):
         print("[*] Iniciando investigación (modo híbrido)...")
+
+        # --- Atajo: si la consulta es sobre un tipo de vulnerabilidad
+        # conocido, vamos directo a PayloadsAllTheThings en vez de todo
+        # el pipeline de búsqueda+scraping. Más rápido (una descarga) y
+        # con payloads reales y confiables, en vez de lo que traiga una
+        # búsqueda genérica.
+        payloads_directos = self._intentar_payloads_conocidos(consulta_original)
+        if payloads_directos:
+            print("[✓] Encontrado en PayloadsAllTheThings, salteando búsqueda genérica")
+            return payloads_directos[:PRESUPUESTO_CARACTERES]
 
         # --- Intentar API primero ---
         respuesta_api = None
@@ -75,7 +148,7 @@ class Investigador:
 
             if i == 0:
                 # Solo para la consulta original, no para cada variante.
-                for sitio in ["github.com", "stackoverflow.com"]:
+                for sitio in SITIOS_SEGURIDAD:
                     res_sitio = buscar_multicanal(subq, max_results=2, sitio=sitio)
                     for r in res_sitio:
                         if r.get("href"):
