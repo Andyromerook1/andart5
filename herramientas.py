@@ -153,8 +153,10 @@ def ejecutar(nombre_herramienta, argumentos_texto):
         return False, f"'{nombre_herramienta}' tardó demasiado y fue cancelado."
 
     salida = ((proceso.stdout or "") + (proceso.stderr or "")).strip()
-    # Tope de caracteres para no inflar el prompt del modelo de más al
-    # pedirle que interprete el resultado.
-    salida = salida[:4000] if salida else "(sin salida)"
+    # Techo de seguridad generoso (no un recorte de uso normal): un scan
+    # típico de nmap con estos flags no se acerca ni de lejos a esto.
+    # Esto solo protege contra un caso patológico de salida gigante, no
+    # limita la información real que te llega.
+    salida = salida[:8000] if salida else "(sin salida)"
 
     return True, salida
