@@ -1,21 +1,29 @@
-# buscador.py
 import requests
 from bs4 import BeautifulSoup
 from urllib.parse import unquote, urlparse
 
-def buscar_multicanal(consulta, max_results=3, sitio=None):
+def buscar_multicanal(consulta, max_results=3, sitio=None, periodo=None):
     """
     Busca en DuckDuckGo (HTML) y devuelve lista de dicts
     con 'title', 'href' (URL absoluta), 'body'.
+
+    `periodo`: filtro de fecha de DuckDuckGo (opcional). Valores válidos:
+    'd' (último día), 'w' (última semana), 'm' (último mes), 'y' (último
+    año). Sin esto, DDG te devuelve cualquier cosa sin importar cuándo se
+    escribió — para bug bounty, un payload de hace 5 años probablemente
+    ya está parchado en cualquier programa serio, así que para búsquedas
+    de seguridad conviene pedir 'y' como mínimo.
     """
     query = consulta
     if sitio:
         query += f" site:{sitio}"
-    
+
     url = "https://html.duckduckgo.com/html/"
     headers = {"User-Agent": "Mozilla/5.0 (Android; Linux arm64; Termux)"}
     params = {"q": query, "kl": "us-en"}
-    
+    if periodo:
+        params["df"] = periodo
+
     try:
         resp = requests.post(url, data=params, headers=headers, timeout=10)
         if resp.status_code != 200:
@@ -28,15 +36,13 @@ def buscar_multicanal(consulta, max_results=3, sitio=None):
             link_tag = item.select_one(".result__url")
             if not title_tag:
                 continue
-            
+
             title = title_tag.get_text(strip=True)
             body = snippet_tag.get_text(strip=True) if snippet_tag else ""
-            
-            # Intentar extraer la URL real del enlace de redirección de DuckDuckGo
+
             raw_href = title_tag.get("href", "")
             real_url = ""
             if "uddg=" in raw_href:
-                # El formato es /l/?kh=...&uddg=https%3A%2F%2Fwww.pagina.com%2F...
                 uddg_start = raw_href.find("uddg=") + 5
                 uddg_end = raw_href.find("&", uddg_start)
                 if uddg_end == -1:
@@ -44,12 +50,11 @@ def buscar_multicanal(consulta, max_results=3, sitio=None):
                 encoded_url = raw_href[uddg_start:uddg_end]
                 real_url = unquote(encoded_url)
             else:
-                # Fallback: usar el texto visible y añadir https:// si falta
                 visible_url = link_tag.get_text(strip=True) if link_tag else ""
                 if visible_url and not visible_url.startswith("http"):
                     visible_url = "https://" + visible_url
                 real_url = visible_url
-            
+
             if real_url:
                 results.append({"title": title, "href": real_url, "body": body})
                 if len(results) >= max_results:
