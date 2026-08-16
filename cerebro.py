@@ -8,6 +8,21 @@ import re
 # pedir que se ejecute una herramienta real: una línea "!herramienta
 # nombre argumentos", nada más en esa respuesta.
 _PATRON_TOOL_CALL = re.compile(r"^!herramienta\s+(\S+)\s+(.+)$", re.IGNORECASE | re.DOTALL)
+
+
+def _limpiar_para_deteccion(texto):
+    """Los modelos chicos a veces 'decoran' la respuesta con backticks,
+    comillas o bloques de código aunque les pidamos texto plano — esto
+    saca esos envoltorios típicos antes de intentar reconocer el
+    tool-call, para que no falle la detección solo por eso."""
+    limpio = texto.strip()
+    if limpio.startswith("```") and limpio.endswith("```"):
+        limpio = limpio[3:-3].strip()
+    if limpio.startswith("`") and limpio.endswith("`"):
+        limpio = limpio[1:-1].strip()
+    if limpio.startswith('"') and limpio.endswith('"'):
+        limpio = limpio[1:-1].strip()
+    return limpio
 class CerebroAndart:
     def __init__(self):
         self.historial = []  # lista de dicts {"usuario": ..., "andart": ...}
@@ -85,7 +100,13 @@ class CerebroAndart:
         # scope.txt de herramientas.py) y le devolvemos el resultado
         # para que arme la respuesta final en base a datos reales, en
         # vez de mostrarte crudo el comando que "quería" correr.
-        match_tool = _PATRON_TOOL_CALL.match(salida_final.strip())
+        match_tool = _PATRON_TOOL_CALL.match(_limpiar_para_deteccion(salida_final))
+        if not match_tool and "herramienta" in salida_final.lower():
+            # No matcheó, pero menciona "herramienta" — probablemente el
+            # modelo intentó pedir una pero con un formato raro. Esto se
+            # imprime en la consola de Termux (no en el chat) para poder
+            # diagnosticar exactamente qué formato uso, en vez de adivinar.
+            print(f"[DEBUG] Posible tool-call no reconocido: {salida_final!r}")
         if match_tool:
             nombre_herramienta = match_tool.group(1).lower()
             argumentos = match_tool.group(2).strip()
