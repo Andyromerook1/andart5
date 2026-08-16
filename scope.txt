@@ -1,0 +1,17 @@
+# scope.txt — Objetivos autorizados para correr herramientas de recon.
+#
+# Un dominio por línea. Antes de correr cualquier herramienta (nmap, etc.)
+# contra un objetivo, Andart chequea que esté en esta lista — así nunca
+# terminás escaneando algo por error o porque el modelo interpretó mal
+# algo que leyó en la web.
+#
+# Agregá acá SOLO dominios de programas de bug bounty donde tengas
+# autorización explícita para testear (revisá el "scope" que publica
+# cada programa en HackerOne antes de agregar nada).
+#
+# Los subdominios de un dominio en la lista quedan autorizados
+# automáticamente (ej: si agregás "ejemplo.com", "api.ejemplo.com"
+# también queda permitido).
+#
+# Ejemplo (comentado, no está activo):
+# ejemplo-programa.com
