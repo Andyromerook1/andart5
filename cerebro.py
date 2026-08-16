@@ -16,6 +16,13 @@ class CerebroAndart:
             "última", "noticia", "noticias", "precio", "cotización",
             "clima", "tiempo en", "quién es", "quien es", "cuándo",
             "cuando fue", "resultado", "versión más nueva", "última versión",
+            # Palabras de bug bounty: sin esto, pedidos como "dame payloads
+            # de XSS" no disparaban la investigación (ni el atajo a
+            # PayloadsAllTheThings, ni la búsqueda en HackerOne), y el
+            # modelo respondía solo de memoria en vez de ir a buscar algo
+            # más fresco.
+            "payload", "payloads", "exploit", "vulnerabilidad",
+            "vulnerabilidades", "bypass", "cve", "poc", "writeup",
         ]
         return any(s in texto.lower() for s in SEÑALES_ACTUALIDAD)
     def _historial_para_llm(self):
