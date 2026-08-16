@@ -92,7 +92,16 @@ class CerebroAndart:
             explicacion = f"Ejecutando {nombre_herramienta}..."
 
             ok, resultado_herramienta = ejecutar_herramienta(nombre_herramienta, argumentos)
+
             if ok:
+                # El dato REAL y COMPLETO de la herramienta se arma acá
+                # y queda garantizado en la respuesta pase lo que pase
+                # con el paso siguiente (la interpretación de la IA).
+                # Para bug bounty, perder o recortar el resultado real
+                # es peor que no tener el resumen en español.
+                resultado_bruto = (
+                    f"🔧 Resultado de {nombre_herramienta} {argumentos}:\n\n{resultado_herramienta}"
+                )
                 contexto_resultado = (
                     f"Resultado de ejecutar {nombre_herramienta} {argumentos}:\n"
                     f"{resultado_herramienta}"
@@ -101,18 +110,38 @@ class CerebroAndart:
                 # El rechazo (ej: objetivo fuera de scope.txt) también se
                 # lo pasamos al modelo como contexto, para que te lo
                 # explique en lenguaje natural en vez de solo fallar.
+                resultado_bruto = None
                 contexto_resultado = (
                     f"No se pudo ejecutar {nombre_herramienta} {argumentos}: "
                     f"{resultado_herramienta}"
                 )
 
-            # Segunda pasada: le pedimos al modelo que interprete el
-            # resultado real, en vez de devolverte el tool-call crudo.
-            salida_final = self.llm.responder(
+            # Le pedimos al modelo que interprete el resultado, con
+            # bastante más margen de tiempo (600s) ya que mandamos el
+            # dato completo sin recortar. Si aun así se pasa de tiempo,
+            # NO perdemos el resultado real: mostramos el dato crudo
+            # solo, sin la interpretación.
+            interpretacion = self.llm.responder(
                 pregunta=consulta_real,
                 contexto_web=contexto_resultado,
                 historial=historial_para_llm,
+                timeout=600,
             )
+
+            if resultado_bruto is None:
+                # Caso rechazo (fuera de scope, etc.): la interpretación
+                # ES la respuesta completa, no hay dato crudo que mostrar.
+                salida_final = interpretacion
+            elif interpretacion.startswith("Error:"):
+                # La interpretación falló o se pasó de tiempo — mostramos
+                # igual el resultado real completo, sin perderlo.
+                salida_final = (
+                    resultado_bruto
+                    + "\n\n(No se pudo generar una interpretación en IA a tiempo, "
+                    "pero el resultado de arriba es completo y real.)"
+                )
+            else:
+                salida_final = resultado_bruto + f"\n\n📖 {interpretacion}"
 
         self.historial.append({"andart": salida_final})
         return "ia_respuesta", explicacion, salida_final
